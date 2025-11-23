@@ -1,50 +1,468 @@
-/* ... (Mantenha o CSS anterior e adicione/substitua isso) ... */
+/* =========================================
+   1. VARIÁVEIS E RESET
+   ========================================= */
+:root {
+    --bg-dark: #1e1e1e;
+    --bg-panel: #252526;
+    --accent: #007acc;
+    --accent-hover: #005f9e;
+    --text: #e0e0e0;
+    --text-muted: #aaaaaa;
+    --border: #333;
+    --green: #28a745;
+    --red: #e74c3c;
+    --orange: #e67e22;
+    --purple: #9b59b6;
+    --bg-input: #333;
+    --card-hover: #2d2d2d;
+}
 
-/* DROP ZONE */
-.drop-zone {
-    position: absolute;
-    top: 0; left: 0; width: 100%; height: 100%;
-    background: rgba(0, 122, 204, 0.9);
+body.light-mode {
+    --bg-dark: #f0f2f5;
+    --bg-panel: #ffffff;
+    --text: #333333;
+    --text-muted: #666666;
+    --border: #ddd;
+    --bg-input: #ffffff;
+    --card-hover: #f8f9fa;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background-color: var(--bg-dark);
+    color: var(--text);
+    margin: 0;
+    display: flex;
+    height: 100vh;
+    overflow: hidden;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+/* =========================================
+   2. SIDEBAR (BARRA LATERAL)
+   ========================================= */
+.sidebar {
+    width: 280px;
+    background-color: var(--bg-panel);
+    border-right: 1px solid var(--border);
     display: flex;
     flex-direction: column;
+    flex-shrink: 0;
+    z-index: 50;
+}
+
+.logo-area {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 20px; border-bottom: 1px solid var(--border);
+}
+.logo { font-size: 18px; font-weight: bold; display: flex; align-items: center; gap: 10px; color: var(--text); }
+
+.btn-theme { 
+    background: transparent; border: none; color: var(--text); 
+    cursor: pointer; padding: 5px; border-radius: 50%; 
+}
+.btn-theme:hover { background: rgba(128,128,128,0.2); }
+
+.search-box { padding: 15px; }
+.search-box input {
+    width: 100%; padding: 10px;
+    background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--text); border-radius: 5px; outline: none;
+}
+.search-box input:focus { border-color: var(--accent); }
+
+.create-box { padding: 0 15px 15px 15px; }
+.btn-create { 
+    width: 100%; padding: 10px; background: var(--accent); 
+    color: white; border: none; border-radius: 4px; cursor: pointer; 
+    font-weight: bold; transition: 0.2s; 
+}
+.btn-create:hover { background: var(--accent-hover); }
+
+.func-list { flex: 1; overflow-y: auto; padding: 5px; }
+
+.func-item {
+    padding: 12px 15px; cursor: pointer; border-radius: 4px; margin-bottom: 2px;
+    font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; 
+    color: var(--text); transition: 0.1s;
+}
+.func-item:hover { background: var(--card-hover); }
+.func-item.active { 
+    background: #37373d; border-left: 4px solid var(--accent); 
+    color: white; font-weight: 600; 
+}
+body.light-mode .func-item.active { background: #e1f0fa; color: var(--accent); }
+
+.loading-text { text-align: center; padding: 20px; color: var(--text-muted); font-size: 14px; }
+
+/* =========================================
+   3. ÁREA PRINCIPAL E HEADER
+   ========================================= */
+.main { 
+    flex: 1; display: flex; flex-direction: column; 
+    position: relative; background-color: var(--bg-dark); 
+}
+
+.header {
+    padding: 15px 20px; border-bottom: 1px solid var(--border); 
+    background: var(--bg-panel);
+    display: flex; justify-content: space-between; align-items: center;
+}
+.header h2 { margin: 0; font-size: 20px; color: var(--text); font-weight: 600; }
+
+.header-actions { display: flex; gap: 10px; }
+
+.btn-upload {
+    background: var(--accent); color: white; border: none; padding: 8px 15px;
+    border-radius: 4px; font-weight: bold; cursor: pointer; 
+    display: flex; align-items: center; gap: 5px; transition: 0.2s;
+}
+.btn-upload:hover { background: var(--accent-hover); }
+.btn-upload:disabled { background: #555; cursor: not-allowed; opacity: 0.7; }
+
+/* =========================================
+   4. ABAS (TABS) - ESTILO PASTA
+   ========================================= */
+.tabs-wrapper {
+    display: flex;
+    gap: 2px;
+    padding: 0 20px;
+    overflow-x: auto;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-dark);
+    flex-shrink: 0;
+    align-items: flex-end; 
+    height: 48px;
+}
+
+.tab-btn {
+    padding: 6px 15px;
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: all 0.2s ease;
+    margin-bottom: 0;
+    position: relative;
+    top: 4px; 
+    opacity: 0.8;
+}
+
+.tab-btn:hover {
+    background: rgba(128, 128, 128, 0.1);
+    color: var(--text);
+    top: 2px;
+    opacity: 1;
+}
+
+.tab-btn.active {
+    background: var(--bg-panel);
+    color: var(--accent);
+    border: 1px solid var(--border);
+    border-bottom: 1px solid var(--bg-panel);
+    border-top: 2px solid var(--accent);
+    padding: 10px 20px;
+    font-weight: bold;
+    top: 1px;
+    z-index: 5;
+    opacity: 1;
+    box-shadow: 0 -2px 5px rgba(0,0,0,0.05);
+}
+
+/* =========================================
+   5. DROP ZONE (UPLOAD)
+   ========================================= */
+.drop-zone {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 122, 204, 0.9); z-index: 500;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    backdrop-filter: blur(2px); transition: 0.2s;
+}
+.drop-zone.hidden { opacity: 0; pointer-events: none; }
+.drop-zone span { font-size: 64px; color: white; margin-bottom: 20px; }
+.drop-zone p { font-size: 24px; color: white; font-weight: bold; }
+
+/* =========================================
+   6. GRID DE ARQUIVOS E CARDS
+   ========================================= */
+.files-container {
+    flex: 1; padding: 20px; overflow-y: auto; 
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); 
+    gap: 15px; align-content: start; padding-bottom: 80px;
+}
+
+.file-card {
+    background: var(--bg-panel); 
+    border: 2px solid transparent; 
+    border-radius: 8px;
+    padding: 10px; text-align: center; cursor: pointer; height: 145px;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1); 
+    position: relative; /* Para o checkbox absoluto */
+    transition: transform 0.2s;
+}
+.file-card:hover { 
+    transform: translateY(-3px); 
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2); 
+    background: var(--card-hover);
+}
+.file-card.selected { 
+    border-color: var(--accent); 
+    background: rgba(0,122,204,0.15); 
+}
+
+.file-name { 
+    font-size: 11px; color: var(--text); margin-top: 8px; 
+    word-break: break-word; overflow: hidden; max-height: 28px; 
+    line-height: 1.3; width: 100%; 
+}
+.file-thumb { 
+    max-width: 100%; max-height: 80px; object-fit: cover; 
+    border-radius: 4px; 
+}
+.icon-lg { font-size: 48px; color: #777; }
+
+.placeholder-img {
+    grid-column: 1 / -1; text-align: center; color: #444; margin-top: 50px;
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+}
+
+/* --- Checkbox de Seleção Múltipla --- */
+.card-checkbox { 
+    position: absolute; top: 8px; right: 8px; 
+    width: 20px; height: 20px; 
+    border: 2px solid #666; background: rgba(0,0,0,0.5); 
+    border-radius: 50%; display: none; z-index: 10; pointer-events: none; 
+}
+.file-card.multi-selected { 
+    border-color: var(--orange); 
+    background: rgba(230, 126, 34, 0.15); 
+}
+.file-card.multi-selected .card-checkbox { 
+    background: var(--orange); border-color: var(--orange); 
+}
+
+/* =========================================
+   7. PAINEL DE AÇÕES (RODAPÉ)
+   ========================================= */
+.actions-panel {
+    height: 70px; background: var(--bg-panel); border-top: 1px solid var(--border);
+    padding: 0 20px; display: flex; align-items: center; justify-content: space-between;
+    position: absolute; bottom: 0; width: 100%; z-index: 100; 
+    box-shadow: 0 -2px 20px rgba(0,0,0,0.3);
+}
+
+.panel-left { display: flex; align-items: center; gap: 10px; color: var(--text); font-weight: 500; }
+.controls { display: flex; gap: 10px; align-items: center; }
+
+select, input[type="text"] {
+    padding: 8px; background: var(--bg-input); border: 1px solid var(--border);
+    color: var(--text); border-radius: 4px; outline: none;
+}
+select:focus, input:focus { border-color: var(--accent); }
+
+.check-group { color: var(--text-muted); font-size: 13px; display: flex; align-items: center; gap: 5px; cursor: pointer; }
+
+.btn-action, .btn-rename, .btn-view, .btn-orange, .btn-purple {
+    border: none; padding: 0 15px; height: 36px; border-radius: 4px; 
+    cursor: pointer; color: white; font-weight: bold; font-size: 13px;
+    display: flex; align-items: center; justify-content: center; gap: 5px; transition: 0.2s;
+}
+.btn-rename { background: var(--green); }
+.btn-rename:hover { background: #218838; }
+.btn-view { background: #444; }
+.btn-view:hover { background: #666; }
+.btn-orange { background: var(--orange); }
+.btn-orange:hover { background: #d35400; }
+.btn-purple { background: var(--purple); }
+.btn-purple:hover { background: #8e44ad; }
+
+/* Botão flutuante (Seleção Múltipla) ativação visual */
+.btn-tool.selection-active { 
+    background: var(--orange); border-color: var(--orange); color: white; 
+}
+
+.hidden { display: none !important; }
+
+/* =========================================
+   8. MODAIS GERAIS
+   ========================================= */
+.modal-overlay {
+    display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center;
+    backdrop-filter: blur(3px);
+}
+
+.modal-content {
+    background: var(--bg-panel); width: 80%; border-radius: 8px; overflow: hidden;
+    display: flex; flex-direction: column; color: var(--text);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5); border: 1px solid var(--border);
+}
+
+.modal-header { 
+    padding: 15px; background: var(--bg-panel); border-bottom: 1px solid var(--border); 
+    display: flex; justify-content: space-between; align-items: center; 
+}
+.modal-header h3 { margin: 0; font-size: 16px; }
+
+.btn-close { background: none; border: none; color: var(--text); font-size: 24px; cursor: pointer; line-height: 1; }
+.btn-close:hover { color: var(--red); }
+
+.modal-body { flex: 1; background: var(--bg-dark); position: relative; overflow: hidden; }
+.modal-footer { padding: 15px; border-top: 1px solid var(--border); background: var(--bg-panel); display: flex; justify-content: flex-end; gap: 10px; }
+
+/* =========================================
+   9. VISUALIZADOR AVANÇADO (ZOOM + ARRASTAR)
+   ========================================= */
+.viewer-content {
+    width: 60vh;           /* Tamanho reduzido (papel) */
+    min-width: 500px;      
+    max-width: 95vw;
+    height: 90vh;
+    background: #101010;   /* Fundo escuro para foco */
+    box-shadow: 0 0 50px rgba(0,0,0,0.9);
+    border: 1px solid #333;
+    border-radius: 8px;
+    display: flex; flex-direction: column;
+    margin: auto;
+}
+
+.viewer-body {
+    flex: 1;
+    background: #050505;
+    overflow: hidden; /* Esconde o zoom excedente */
+    position: relative;
+    display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 500;
-    opacity: 0;
-    pointer-events: none; /* Deixa clicar através quando invisivel */
-    transition: 0.3s;
+    padding: 0;
 }
 
-.drop-zone.active {
-    opacity: 1;
-    pointer-events: all;
+/* Container que centraliza tudo */
+.img-container {
+    width: 100%; height: 100%;
+    display: flex; justify-content: center; align-items: center;
+    position: relative;
+    cursor: default;
+    margin: 0;
+}
+.img-container.grabbing { cursor: grab; }
+.img-container.grabbing:active { cursor: grabbing; }
+
+/* Camada transparente para arrastar */
+.drag-layer {
+    position: absolute; top: -1000px; left: -1000px; right: -1000px; bottom: -1000px;
+    z-index: 10; background: transparent;
 }
 
-.drop-zone.hidden {
-    display: none; /* Esconde quando não tem func selecionado */
+/* Elemento (PDF/Img) com posição absoluta para o translate funcionar */
+.viewer-element {
+    position: absolute;
+    max-width: 100%; max-height: 100%;
+    object-fit: contain;
+    box-shadow: 0 0 20px rgba(0,0,0,0.5);
+    transform-origin: center center;
+    transition: none; /* Remove lag */
 }
 
-.drop-zone p { color: white; font-size: 24px; font-weight: bold; margin-top: 10px; }
-.drop-zone span { color: white; }
+iframe.viewer-element {
+    width: 100%; height: 100%; border: none; background: #fff; z-index: 1; display: block;
+}
 
-/* BOTÃO FLUTUANTE DE UPLOAD */
-.btn-upload-float {
-    position: fixed;
-    bottom: 100px; /* Acima do painel de ações */
-    right: 30px;
-    background-color: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 50px;
-    padding: 15px 25px;
-    font-size: 16px;
-    font-weight: bold;
+/* Controles do Visualizador */
+.viewer-controls { display: flex; gap: 8px; margin-right: 15px; align-items: center; }
+.divider-v { width: 1px; height: 20px; background: #444; margin: 0 5px; }
+
+.btn-tool {
+    width: 32px; height: 32px;
+    background: #333; border: 1px solid #555; color: #eee; 
+    border-radius: 4px; cursor: pointer; 
+    display: flex; justify-content: center; align-items: center;
+}
+.btn-tool:hover { background: var(--accent); border-color: var(--accent); }
+.btn-tool.active-tool { 
+    background: var(--accent); border-color: var(--accent); color: white; 
+    box-shadow: 0 0 8px var(--accent); 
+}
+
+/* =========================================
+   10. SEPARADOR E JUNTAR (PDF MERGE/SPLIT)
+   ========================================= */
+
+/* Estilo Horizontal para Juntar */
+.merge-container { 
+    display: flex; gap: 15px; overflow-x: auto; padding: 10px; 
+    min-height: 160px; background: #1e1e1e; border-radius: 8px; 
+    align-items: center; border: 1px dashed #444; 
+}
+
+.merge-card { 
+    width: 100px; background: #252526; border-radius: 6px; 
+    padding: 5px; flex-shrink: 0; cursor: grab; border: 1px solid #444; 
+    text-align: center; position: relative; 
+}
+.merge-thumb { 
+    width: 100%; height: 80px; object-fit: contain; 
+    background: #fff; border-radius: 4px; margin-bottom: 5px; 
+}
+.merge-name { 
+    font-size: 10px; color: #ccc; overflow: hidden; 
+    text-overflow: ellipsis; white-space: nowrap; 
+}
+.btn-remove-merge { 
+    position: absolute; top: -5px; right: -5px; 
+    background: var(--red); color: white; border-radius: 50%; 
+    width: 18px; height: 18px; font-size: 12px; border: none; 
+    cursor: pointer; display: flex; justify-content: center; align-items: center; 
+}
+
+/* Estilo Vertical para Separar */
+.split-body { display: flex; flex-direction: column; background: #111; height: 100%; }
+
+.split-source-area { 
+    height: 180px; background: #1e1e1e; padding: 10px; 
+    border-bottom: 1px solid #444; overflow-x: auto; 
+    display: flex; align-items: center; gap: 10px; flex-shrink: 0; 
+}
+.split-list { display: flex; gap: 10px; height: 100%; align-items: center; }
+
+.split-target-area { flex: 1; padding: 20px; overflow-y: auto; background: #111; }
+.target-header { 
+    display: flex; justify-content: space-between; margin-bottom: 20px; 
+    border-bottom: 1px solid #333; padding-bottom: 10px; 
+}
+.target-header h4 { margin: 0; color: #ccc; }
+
+.groups-container { display: flex; flex-wrap: wrap; gap: 20px; }
+
+.page-card { 
+    background: #fff; width: 90px; height: 120px; border-radius: 4px; 
+    display: flex; flex-direction: column; align-items: center; padding: 4px; 
+    cursor: grab; border: 1px solid #ccc; flex-shrink: 0; position: relative;
+}
+.page-card:hover { border-color: var(--accent); box-shadow: 0 0 5px var(--accent); }
+.page-card canvas { width: 100%; height: 95px; object-fit: contain; }
+.page-card span { font-size: 10px; color: #333; font-weight: bold; margin-top: 2px; }
+
+.doc-group { 
+    background: #252526; border: 1px solid #444; border-radius: 8px; 
+    width: 300px; min-height: 200px; display: flex; flex-direction: column; 
     box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    transition: 0.2s;
-    z-index: 100;
 }
-.btn-upload-float:hover { background-color: #005f9e; transform: scale(1.05); }
+.doc-group-header { 
+    background: #2d2d2d; padding: 10px; border-bottom: 1px solid #444; 
+    display: flex; justify-content: space-between; align-items: center; border-radius: 8px 8px 0 0;
+}
+.doc-group-title { display: flex; width: 100%; justify-content: space-between; align-items: center; font-size: 12px; color: #ccc; }
+.doc-group-list { 
+    flex: 1; padding: 10px; display: flex; flex-wrap: wrap; gap: 8px; 
+    background: #1e1e1e; border-radius: 0 0 8px 8px; 
+}
+.btn-remove-group { background: transparent; border: none; color: #e74c3c; cursor: pointer; font-size: 18px; }
+.btn-remove-group:hover { color: #ff6b6b; }

@@ -1,12 +1,13 @@
 import os
 import pickle
 import io
-from flask import Flask, render_template, jsonify, request
+from flask import Flask, render_template, jsonify, request, send_file
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload, MediaFileUpload
-from werkzeug.utils import secure_filename # Para limpar nome do arquivo
+from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+from PyPDF2 import PdfReader, PdfWriter, PdfMerger # Adicionado PdfMerger
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 
@@ -14,9 +15,7 @@ app = Flask(__name__)
 SCOPES = ['https://www.googleapis.com/auth/drive']
 CREDENTIALS_FILE = 'credentials.json'
 TOKEN_FILE = 'token.pickle'
-
-# COLOQUE O ID DA SUA PASTA AQUI
-ROOT_FOLDER_ID = '1TaMOmbOx1KjpjG3IFFt8fcXAh7-IeG79' 
+ROOT_FOLDER_ID = '1BFfAp0hrSSQwjDCiJWcYiMO_BjNA_TCu'
 
 FOLDERS_STRUCTURE = [
     "01 - DOC CONTRATUAIS", "02 - SSMA (ASO)", "03 - ESPELHO DE PONTO",
@@ -49,8 +48,11 @@ def index():
 def listar_funcionarios():
     try:
         service = get_service()
+        if not service: return jsonify({"error": "Erro de autenticação"}), 500
+        
         results = service.files().list(
             q=f"'{ROOT_FOLDER_ID}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            pageSize=1000,
             fields="files(id, name)",
             orderBy="name"
         ).execute()
@@ -58,29 +60,58 @@ def listar_funcionarios():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/arquivos/<func_id>')
-def listar_arquivos(func_id):
+@app.route('/api/subpastas/<func_id>')
+def listar_subpastas(func_id):
     try:
         service = get_service()
-        # 1. Procura a pasta 05
-        query = f"'{func_id}' in parents and mimeType='application/vnd.google-apps.folder' and name contains '05' and trashed=false"
-        pastas = service.files().list(q=query).execute().get('files', [])
-        
-        if not pastas:
-            return jsonify({"error": "Pasta 05 não encontrada", "arquivos": []})
-        
-        doc_folder_id = pastas[0]['id']
-        
-        # 2. Lista arquivos
-        arquivos = service.files().list(
-            q=f"'{doc_folder_id}' in parents and trashed=false",
-            fields="files(id, name, mimeType, webViewLink, thumbnailLink, iconLink)",
+        results = service.files().list(
+            q=f"'{func_id}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false",
+            pageSize=50,
+            fields="files(id, name)",
             orderBy="name"
-        ).execute().get('files', [])
-        
-        return jsonify({"arquivos": arquivos, "folder_id": doc_folder_id})
+        ).execute()
+        return jsonify(results.get('files', []))
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/arquivos_pasta/<folder_id>')
+def listar_arquivos_pasta(folder_id):
+    try:
+        service = get_service()
+        results = service.files().list(
+            q=f"'{folder_id}' in parents and trashed=false and mimeType != 'application/vnd.google-apps.folder'",
+            pageSize=1000,
+            fields="files(id, name, mimeType, webViewLink, thumbnailLink, iconLink)",
+            orderBy="name"
+        ).execute()
+        return jsonify({"arquivos": results.get('files', []), "folder_id": folder_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/upload', methods=['POST'])
+def upload_arquivo():
+    if 'file' not in request.files:
+        return jsonify({'status': 'error', 'msg': 'Nenhum arquivo enviado'}), 400
+    
+    file = request.files['file']
+    folder_id = request.form.get('folder_id')
+    
+    if file.filename == '':
+        return jsonify({'status': 'error', 'msg': 'Nome de arquivo inválido'}), 400
+
+    try:
+        service = get_service()
+        file_metadata = {'name': file.filename, 'parents': [folder_id]}
+        
+        fh = io.BytesIO()
+        file.save(fh)
+        fh.seek(0)
+        
+        media = MediaIoBaseUpload(fh, mimetype=file.content_type, resumable=True)
+        file_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
+        return jsonify({'status': 'success', 'file_id': file_drive.get('id')})
+    except Exception as e:
+        return jsonify({'status': 'error', 'msg': str(e)}), 500
 
 @app.route('/api/renomear', methods=['POST'])
 def renomear():
@@ -92,10 +123,112 @@ def renomear():
     except Exception as e:
         return jsonify({"status": "error", "msg": str(e)}), 500
 
+@app.route('/api/proxy_pdf/<file_id>')
+def proxy_pdf(file_id):
+    try:
+        service = get_service()
+        request_drive = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request_drive)
+        done = False
+        while done is False:
+            status, done = downloader.next_chunk()
+        fh.seek(0)
+        return send_file(fh, mimetype='application/pdf')
+    except Exception as e:
+        return str(e), 500
+
+@app.route('/api/separar_blocos', methods=['POST'])
+def separar_blocos():
+    data = request.json
+    file_id = data.get('id')
+    grupos = data.get('grupos')
+    folder_id = data.get('folder_id')
+
+    try:
+        service = get_service()
+        request_drive = service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request_drive)
+        done = False
+        while done is False: status, done = downloader.next_chunk()
+        fh.seek(0)
+        
+        pdf_reader = PdfReader(fh)
+        total_pages = len(pdf_reader.pages)
+
+        for grupo in grupos:
+            nome_arquivo = grupo['nome']
+            indices_paginas = grupo['paginas']
+            if not indices_paginas: continue
+
+            pdf_writer = PdfWriter()
+            for p_index in indices_paginas:
+                if 0 <= p_index < total_pages:
+                    pdf_writer.add_page(pdf_reader.pages[p_index])
+
+            output_stream = io.BytesIO()
+            pdf_writer.write(output_stream)
+            output_stream.seek(0)
+
+            media_body = MediaIoBaseUpload(output_stream, mimetype='application/pdf', resumable=True)
+            file_metadata = {'name': nome_arquivo, 'parents': [folder_id]}
+            service.files().create(body=file_metadata, media_body=media_body).execute()
+
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+# --- NOVA ROTA: JUNTAR ARQUIVOS ---
+@app.route('/api/juntar_arquivos', methods=['POST'])
+def juntar_arquivos():
+    data = request.json
+    ids_arquivos = data.get('ids')
+    novo_nome = data.get('nome')
+    folder_id = data.get('folder_id')
+
+    if not ids_arquivos or len(ids_arquivos) < 2:
+        return jsonify({"status": "error", "msg": "Selecione pelo menos 2 arquivos."}), 400
+
+    try:
+        service = get_service()
+        merger = PdfMerger()
+        streams = [] 
+
+        # Baixa e junta na ordem
+        for file_id in ids_arquivos:
+            request_drive = service.files().get_media(fileId=file_id)
+            fh = io.BytesIO()
+            downloader = MediaIoBaseDownload(fh, request_drive)
+            done = False
+            while done is False: status, done = downloader.next_chunk()
+            fh.seek(0)
+            
+            try:
+                merger.append(fh)
+                streams.append(fh)
+            except:
+                pass 
+
+        output_stream = io.BytesIO()
+        merger.write(output_stream)
+        merger.close()
+        for s in streams: s.close()
+        output_stream.seek(0)
+
+        media_body = MediaIoBaseUpload(output_stream, mimetype='application/pdf', resumable=True)
+        file_metadata = {'name': novo_nome, 'parents': [folder_id]}
+        service.files().create(body=file_metadata, media_body=media_body).execute()
+
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
 @app.route('/api/criar_funcionario', methods=['POST'])
 def criar_funcionario():
     data = request.json
-    nome = data['nome'].upper() # PASTA CONTINUA MAIÚSCULA
+    nome = data.get('nome').upper()
     try:
         service = get_service()
         meta_pai = {'name': nome, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [ROOT_FOLDER_ID]}
@@ -106,38 +239,7 @@ def criar_funcionario():
             meta = {'name': folder, 'mimeType': 'application/vnd.google-apps.folder', 'parents': [pai_id]}
             service.files().create(body=meta).execute()
             
-        return jsonify({"status": "success", "id": pai_id})
-    except Exception as e:
-        return jsonify({"status": "error", "msg": str(e)}), 500
-
-# --- NOVA ROTA DE UPLOAD ---
-@app.route('/api/upload', methods=['POST'])
-def upload_arquivo():
-    if 'file' not in request.files:
-        return jsonify({"status": "error", "msg": "Nenhum arquivo enviado"}), 400
-    
-    file = request.files['file']
-    folder_id = request.form.get('folder_id')
-    
-    if file.filename == '':
-        return jsonify({"status": "error", "msg": "Nome vazio"}), 400
-
-    try:
-        service = get_service()
-        filename = secure_filename(file.filename)
-        
-        # Salva temporariamente para enviar
-        file.save(filename)
-        
-        file_metadata = {'name': file.filename, 'parents': [folder_id]}
-        media = MediaFileUpload(filename, resumable=True)
-        
-        file_drive = service.files().create(body=file_metadata, media_body=media, fields='id').execute()
-        
-        # Remove arquivo temporário
-        os.remove(filename)
-        
-        return jsonify({"status": "success", "file_id": file_drive.get('id')})
+        return jsonify({"status": "success"})
     except Exception as e:
         return jsonify({"status": "error", "msg": str(e)}), 500
 

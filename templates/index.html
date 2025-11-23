@@ -3,101 +3,166 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema RH</title>
+    <title>Sistema RH Web</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
+    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 </head>
 <body>
 
     <div class="sidebar">
-        <div class="logo">
-            <span class="material-icons">folder_shared</span> Sistema RH
+        <div class="logo-area">
+            <div class="logo"><span class="material-icons">folder_shared</span> RH</div>
+            <button class="btn-theme" onclick="toggleTheme()"><span class="material-icons" id="theme-icon">light_mode</span></button>
         </div>
         <div class="search-box">
             <input type="text" id="search" placeholder="Buscar colaborador..." onkeyup="filtrarFuncionarios()">
         </div>
-        
         <div class="create-box">
             <button class="btn-create" onclick="abrirModalCriar()">+ Novo Colaborador</button>
         </div>
-
         <div class="func-list" id="lista-funcionarios">
-            <div class="loading">Carregando...</div>
+            <div class="loading-text">Carregando lista...</div>
         </div>
     </div>
 
     <div class="main">
+        <div id="drag-overlay" class="drop-zone hidden">
+            <span class="material-icons">cloud_upload</span>
+            <p>Solte os arquivos aqui para enviar</p>
+        </div>
+
         <div class="header">
-            <h2 id="titulo-nome">Selecione um Colaborador</h2>
-            <div class="status-badge" id="status-pasta">Aguardando seleção</div>
-        </div>
-
-        <div id="drop-zone" class="drop-zone hidden">
-            <span class="material-icons" style="font-size: 48px;">cloud_upload</span>
-            <p>Solte os arquivos aqui para anexar</p>
-        </div>
-
-        <div class="files-container" id="grid-arquivos">
-            <div class="placeholder-img">
-                <span class="material-icons" style="font-size: 64px; color: #444;">description</span>
-                <p>Os documentos aparecerão aqui</p>
+            <div class="header-info">
+                <h2 id="titulo-nome">Selecione um Colaborador</h2>
+                <input type="file" id="file-input" multiple style="display: none;" onchange="handleFileSelect(event)">
             </div>
-        </div>
-
-        <div class="actions-panel" id="painel-acoes" style="display: none;">
-            <div class="file-info">
-                <span class="material-icons" style="color: var(--green)">check_circle</span>
-                <span id="nome-arquivo-sel" class="selected-info">...</span>
-            </div>
-            
-            <div class="controls">
-                <select id="doc-type">
-                    <option>RG</option><option>CPF</option><option>CNH</option>
-                    <option>Foto</option><option>Comprovante de Residência</option>
-                    <option>Carteira de Trabalho</option><option>Certidão de Nascimento</option>
-                    <option>Certidão de Casamento</option><option>Título de Eleitor</option>
-                    <option>PIS</option><option>Vacinação</option><option>Reservista</option>
-                    <option>Dados Bancários</option><option>Escolaridade</option>
-                    <option>Histórico Escolar</option><option>Ficha Cadastral</option>
-                </select>
-                
-                <label class="check-group">
-                    <input type="checkbox" id="check-conjuge" onchange="toggleInputs()"> Cônjuge
-                </label>
-                <label class="check-group">
-                    <input type="checkbox" id="check-filho" onchange="toggleInputs()"> Filho
-                </label>
-                <input type="text" id="input-filho" placeholder="Nome do Filho" disabled style="width: 120px;">
-                
-                <button class="btn-rename" onclick="renomearArquivo()">RENOMEAR</button>
-                <button class="btn-view" id="btn-ver" onclick="abrirModalVisualizacao()">
-                    <span class="material-icons">visibility</span> Ver
+            <div class="header-actions">
+                <button class="btn-tool" onclick="toggleModoSelecao()" title="Selecionar Vários" id="btn-select-mode" style="margin-right: 10px;">
+                    <span class="material-icons">checklist</span>
+                </button>
+                <button class="btn-upload" onclick="document.getElementById('file-input').click()" id="btn-upload-topo" disabled>
+                    <span class="material-icons">upload_file</span> Anexar
                 </button>
             </div>
         </div>
 
-        <button class="btn-upload-float" onclick="document.getElementById('input-upload').click()">
-            <span class="material-icons">attach_file</span> Anexar Documento
-        </button>
-        <input type="file" id="input-upload" multiple style="display: none;" onchange="uploadArquivos(this.files)">
+        <div class="tabs-wrapper" id="tabs-container"></div>
 
-    </div>
-
-    <div id="modal-visualizacao" class="modal-overlay" onclick="fecharModal(event)">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h3 id="modal-titulo" style="margin:0; font-size:16px;">Visualização</h3>
-                <button class="btn-close" onclick="fecharModal(event, true)">&times;</button>
+        <div class="files-container" id="grid-arquivos">
+            <div class="placeholder-img">
+                <span class="material-icons" style="font-size: 64px; color: #444;">touch_app</span>
+                <p>Selecione um nome na esquerda.</p>
             </div>
-            <div class="modal-body">
-                <iframe id="preview-frame" src=""></iframe>
+        </div>
+
+        <div class="actions-panel hidden" id="painel-acoes">
+            <div class="panel-left">
+                <span class="material-icons" style="color: var(--green)">check_circle</span>
+                <span class="selected-info" id="nome-arquivo-sel">Selecionado.pdf</span>
+            </div>
+            <div class="controls">
+                <select id="doc-type">
+                    <option>RG</option><option>CPF</option><option>CNH</option><option>Foto</option>
+                    <option>Comprovante de Residência</option><option>Carteira de Trabalho</option>
+                    <option>Certidão de Nascimento</option><option>Certidão de Casamento</option>
+                    <option>Título de Eleitor</option><option>PIS</option><option>Vacinação</option>
+                    <option>Reservista</option><option>Dados Bancários</option><option>Escolaridade</option>
+                    <option>Histórico Escolar</option><option>Ficha Cadastral</option>
+                </select>
+                <label class="check-group"><input type="checkbox" id="check-conjuge" onchange="toggleInputs()"> Cônjuge</label>
+                <label class="check-group"><input type="checkbox" id="check-filho" onchange="toggleInputs()"> Filho</label>
+                <input type="text" id="input-filho" placeholder="Nome Filho" disabled style="width:100px">
+                
+                <button class="btn-rename" onclick="renomearArquivo()">RENOMEAR</button>
+                
+                <button class="btn-purple hidden" id="btn-separar-panel" onclick="acaoSeparar()">
+                    <span class="material-icons">call_split</span> Separar
+                </button>
+
+                <button class="btn-view" id="btn-ver" onclick="abrirVisualizadorCompleto(arquivoAtual)">
+                    <span class="material-icons">visibility</span> Ver
+                </button>
             </div>
         </div>
     </div>
 
-    <div id="loading-overlay" class="modal-overlay" style="z-index: 2000; background: rgba(0,0,0,0.7);">
-        <div style="color: white; font-size: 20px; font-weight: bold;">
-            Enviando arquivos...
+    <div id="modal-juntar" class="modal-overlay" onclick="fecharModal(event)">
+        <div class="modal-content" style="width: 600px; height: auto; max-height: 90vh;">
+            <div class="modal-header">
+                <h3>Juntar Documentos (Arraste para ordenar)</h3>
+                <button class="btn-close" onclick="document.getElementById('modal-juntar').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body" style="padding: 20px; overflow-y: auto;">
+                <div id="merge-list" class="merge-container"></div>
+                <div class="rename-box" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #333;">
+                    <label style="color: #aaa; font-size: 12px; display: block; margin-bottom: 5px;">Nome do Novo Arquivo:</label>
+                    <div style="display: flex; gap: 10px;">
+                        <select id="merge-type" style="flex: 1;"></select>
+                        <input type="text" id="merge-name-preview" disabled style="flex: 1; color: #aaa;">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-action" style="background: #555;" onclick="document.getElementById('modal-juntar').style.display='none'">Cancelar</button>
+                <button class="btn-orange" onclick="confirmarJuncao()">JUNTAR ARQUIVOS</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modal-separar" class="modal-overlay" onclick="fecharModal(event)">
+        <div class="modal-content" style="width: 95%; height: 95%;">
+            <div class="modal-header">
+                <h3>Separar Páginas</h3>
+                <button class="btn-close" onclick="document.getElementById('modal-separar').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body split-body">
+                <div class="split-source-area">
+                    <h4>Páginas Soltas (Origem)</h4>
+                    <div id="split-source-list" class="split-list"></div>
+                </div>
+                <div class="split-target-area">
+                    <div class="target-header">
+                        <h4>Novos Documentos</h4>
+                        <button class="btn-action btn-rename" onclick="adicionarGrupoSplit()">+ Novo Documento</button>
+                    </div>
+                    <div id="split-groups-container" class="groups-container"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-rename" onclick="confirmarSeparacao()">SALVAR SEPARAÇÃO</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="loading-overlay" class="modal-overlay" style="z-index: 2000; background: rgba(0,0,0,0.8);">
+        <div style="color: white; font-size: 24px; font-weight: bold;">Processando...</div>
+    </div>
+
+    <div id="modal-visualizacao" class="modal-overlay" onclick="fecharModal(event)">
+        <div class="modal-content viewer-content">
+            <div class="modal-header">
+                <h3 id="modal-titulo">Visualização</h3>
+                <div class="viewer-controls" id="viewer-controls">
+                    <button class="btn-tool" onclick="toggleMover()" id="btn-move" title="Modo Mover"><span class="material-icons">open_with</span></button>
+                    <div class="divider-v"></div>
+                    <button class="btn-tool" onclick="controlarZoom(-0.1)"><span class="material-icons">remove</span></button>
+                    <button class="btn-tool" onclick="controlarZoom(0.1)"><span class="material-icons">add</span></button>
+                    <button class="btn-tool" onclick="controlarRotacao(-90)"><span class="material-icons">rotate_left</span></button>
+                    <button class="btn-tool" onclick="controlarRotacao(90)"><span class="material-icons">rotate_right</span></button>
+                    <button class="btn-tool" onclick="resetarVisualizacao()"><span class="material-icons">restart_alt</span></button>
+                </div>
+                <button class="btn-close" onclick="fecharModal(event, true)">&times;</button>
+            </div>
+            <div class="modal-body viewer-body" id="viewer-body">
+                <div id="img-container" class="img-container">
+                    <div id="drag-layer" class="drag-layer hidden"></div>
+                    <img id="viewer-image" src="" class="viewer-element hidden">
+                    <iframe id="preview-frame" class="viewer-element hidden" src=""></iframe>
+                </div>
+            </div>
         </div>
     </div>
 
