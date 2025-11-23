@@ -6,8 +6,10 @@
     <title>Sistema RH Web</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.min.js"></script>
-    <script>pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.10.377/pdf.worker.min.js';</script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 </head>
 <body>
@@ -167,5 +169,16 @@
     </div>
 
     <script src="{{ url_for('static', filename='script.js') }}"></script>
+
+    <div id="thumb-zoom-overlay" class="modal-overlay" style="z-index: 3000;" onclick="this.style.display='none'">
+        <div style="position: relative; height: 90%; display: flex; justify-content: center; align-items: center;">
+            <img id="thumb-zoom-img" src="" style="max-height: 100%; max-width: 90vw; border: 2px solid #fff; box-shadow: 0 0 20px rgba(0,0,0,0.8); background: #fff;">
+            <div style="position: absolute; top: -40px; color: white; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px;">
+                Clique em qualquer lugar para fechar
+            </div>
+        </div>
+    </div>
+
 </body>
+
 </html>

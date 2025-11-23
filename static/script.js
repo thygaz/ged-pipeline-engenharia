@@ -1,20 +1,34 @@
+// ======================================================
+// 1. VARIÁVEIS GLOBAIS
+// ======================================================
 let funcionariosCache = [];
 let arquivoAtual = null;
 let nomeFuncionarioAtual = "";
 let pastaAtualId = null;
 
-// --- INICIALIZAÇÃO ---
+// Variáveis de Seleção Múltipla
+let modoSelecao = false;
+let selecionados = []; 
+
+// Variáveis do Visualizador
+let viewerState = { 
+    scale: 1, rotation: 0, x: 0, y: 0, 
+    isDragging: false, startX: 0, startY: 0, moveMode: false 
+};
+
+// ======================================================
+// 2. INICIALIZAÇÃO E HELPER UI
+// ======================================================
 window.onload = async () => {
-    // 1. Carregar preferência de tema
+    // Carregar tema salvo
     if(localStorage.getItem('theme') === 'light') {
         document.body.classList.add('light-mode');
         document.getElementById('theme-icon').innerText = 'dark_mode';
     }
 
-    // 2. Setup Drag & Drop Global
     setupDragAndDrop();
 
-    // 3. Carregar Lista
+    // Carregar lista inicial
     try {
         const res = await fetch('/api/funcionarios');
         funcionariosCache = await res.json();
@@ -24,7 +38,6 @@ window.onload = async () => {
     }
 };
 
-// --- UI: TEMA E FORMATAÇÃO ---
 function toggleTheme() {
     document.body.classList.toggle('light-mode');
     const isLight = document.body.classList.contains('light-mode');
@@ -51,7 +64,9 @@ function sincronizarTiposDocumento() {
     if(original && destino) destino.innerHTML = original.innerHTML;
 }
 
-// --- CORE: LISTAGEM ---
+// ======================================================
+// 3. NAVEGAÇÃO (LISTAS E ABAS)
+// ======================================================
 function renderizarLista(lista) {
     const container = document.getElementById('lista-funcionarios');
     container.innerHTML = '';
@@ -161,20 +176,20 @@ async function carregarArquivosDaPasta(folderId) {
 function criarCardArquivo(arq, container) {
     const card = document.createElement('div');
     card.className = 'file-card';
-    // Adiciona o checkbox visual
+    // Checkbox para seleção múltipla
     card.innerHTML += `<div class="card-checkbox"></div>`;
     
     card.onclick = (e) => {
-        // Se o modo seleção estiver ativo OU segurar Ctrl
+        // Se segurar CTRL ou já estiver em modo seleção
         if (modoSelecao || e.ctrlKey) {
-            if (!modoSelecao) toggleModoSelecao(); // Ativa se usou Ctrl
+            if (!modoSelecao) toggleModoSelecao(); 
             toggleSelecaoArquivo(arq, card);
         } else {
             selecionarArquivo(arq, card);
         }
     };
     
-    // Clique Duplo (Visualizador) - Só se não estiver selecionando vários
+    // Clique Duplo: Abre Visualizador (se não estiver selecionando)
     card.ondblclick = () => { 
         if(!modoSelecao) abrirVisualizadorCompleto(arq); 
     };
@@ -205,12 +220,11 @@ function selecionarArquivo(arq, card) {
     atualizarBotoesInterface();
 }
 
-// --- SELEÇÃO MÚLTIPLA E BOTÕES ---
-let modoSelecao = false;
-let selecionados = []; // Lista de objetos arquivo
-
+// ======================================================
+// 4. SELEÇÃO MÚLTIPLA E BOTÕES
+// ======================================================
 function toggleModoSelecao(forceFalse = false) {
-    if(forceFalse) modoSelecao = true; // Vai inverter para false abaixo
+    if(forceFalse) modoSelecao = true; // Inverte abaixo
     modoSelecao = !modoSelecao;
     
     const btn = document.getElementById('btn-select-mode');
@@ -264,7 +278,7 @@ function atualizarBotoesInterface() {
         document.body.appendChild(btn);
     }
 
-    // 2. Botão SEPARAR (Na Barra Inferior)
+    // 2. Botão SEPARAR (Na Barra Inferior) - Cor Roxo
     const btnSeparar = document.getElementById('btn-separar-panel');
     
     // Lógica: Só mostra se estiver no modo normal (1 arquivo) E for PDF
@@ -282,121 +296,118 @@ function acaoSeparar() {
     }
 }
 
-// --- UPLOAD E DRAG & DROP (CORRIGIDO) ---
-function setupDragAndDrop() {
-    const dropZone = document.getElementById('drag-overlay');
-    let dragCounter = 0;
+// ======================================================
+// 5. VISUALIZADOR AVANÇADO (COM ARRASTAR)
+// ======================================================
+async function abrirVisualizadorCompleto(arq) {
+    if(!arq) arq = arquivoAtual;
+    if(!arq) return;
 
-    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-        document.body.addEventListener(eventName, e => {
-            // IMPORTANTE: Só previne se for arquivo externo
-            if (e.dataTransfer.types.includes('Files')) {
-                e.preventDefault(); 
-                e.stopPropagation();
-            }
-        }, false);
-    });
-
-    document.body.addEventListener('dragenter', (e) => {
-        if (!e.dataTransfer.types.includes('Files')) return; // Ignora drag interno
-        dragCounter++;
-        if (pastaAtualId) dropZone.classList.remove('hidden');
-    });
-
-    document.body.addEventListener('dragleave', (e) => {
-        if (!e.dataTransfer.types.includes('Files')) return;
-        dragCounter--;
-        if (dragCounter === 0) dropZone.classList.add('hidden');
-    });
-
-    document.body.addEventListener('drop', (e) => {
-        if (!e.dataTransfer.types.includes('Files')) return;
-        dragCounter = 0;
-        dropZone.classList.add('hidden');
-        if(pastaAtualId) {
-            handleFiles(e.dataTransfer.files);
-        } else {
-            alert("Selecione um funcionário e uma pasta antes de soltar arquivos.");
-        }
-    });
-}
-
-function handleFileSelect(event) {
-    const files = event.target.files;
-    if(files.length > 0) handleFiles(files);
-}
-
-async function handleFiles(files) {
-    if(!pastaAtualId) return alert("Nenhuma pasta selecionada.");
+    arquivoAtual = arq; 
+    const modal = document.getElementById('modal-visualizacao');
+    const titulo = document.getElementById('modal-titulo');
+    const controls = document.getElementById('viewer-controls');
+    const imgElement = document.getElementById('viewer-image');
+    const iframeElement = document.getElementById('preview-frame');
     
-    const loading = document.getElementById('loading-overlay');
-    loading.style.display = 'flex';
+    titulo.innerText = arq.name;
+    modal.style.display = 'flex';
+    
+    resetarVisualizacao();
+    
+    // Limpa classes
+    imgElement.className = 'viewer-element hidden';
+    iframeElement.className = 'viewer-element hidden';
+    controls.style.visibility = 'visible'; 
 
-    for (let i = 0; i < files.length; i++) {
-        const formData = new FormData();
-        formData.append('file', files[i]);
-        formData.append('folder_id', pastaAtualId);
-
-        try {
-            await fetch('/api/upload', { method: 'POST', body: formData });
-        } catch (e) {
-            console.error("Erro upload", e);
-        }
+    if (arq.mimeType.includes('image')) {
+        imgElement.classList.remove('hidden');
+        imgElement.src = `/api/proxy_pdf/${arq.id}`; 
+        toggleMover(true); // Imagem pode arrastar por padrão
+    } else {
+        iframeElement.classList.remove('hidden');
+        iframeElement.src = `https://drive.google.com/file/d/${arq.id}/preview`;
+        toggleMover(false); // PDF começa travado para rolar página
     }
-
-    loading.style.display = 'none';
-    carregarArquivosDaPasta(pastaAtualId);
 }
 
-// --- RENOMEAR / UTILITÁRIOS ---
-function toggleInputs() {
-    const f = document.getElementById('check-filho').checked;
-    document.getElementById('input-filho').disabled = !f;
-    if(f) document.getElementById('check-conjuge').checked = false;
-    else if(document.getElementById('check-conjuge').checked) document.getElementById('check-filho').checked = false;
+function controlarZoom(delta) {
+    viewerState.scale += delta;
+    if (viewerState.scale < 0.1) viewerState.scale = 0.1; 
+    aplicarTransformacao();
 }
 
-async function renomearArquivo() {
-    if (!arquivoAtual) return;
-    const btn = document.querySelector('.btn-rename');
-    const t = btn.innerText; btn.innerText = "..."; btn.disabled = true;
-
-    try {
-        const tipo = document.getElementById('doc-type').value;
-        const ext = arquivoAtual.name.includes('.') ? arquivoAtual.name.split('.').pop() : 'pdf';
-        let n = formatarNomeVisual(nomeFuncionarioAtual); 
-        let nn = `${tipo} - ${n}.${ext}`;
-        if(document.getElementById('check-conjuge').checked) nn = `${tipo} (Cônjuge) - ${n}.${ext}`;
-        else if(document.getElementById('check-filho').checked) {
-            let fi = document.getElementById('input-filho').value;
-            if(!fi) return alert("Nome filho!");
-            nn = `${tipo} (Filho ${formatarNomeVisual(fi)}) - ${n}.${ext}`;
-        }
-
-        const res = await fetch('/api/renomear', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ id: arquivoAtual.id, new_name: nn })
-        });
-
-        const d = await res.json();
-        if(d.status === 'success') {
-            arquivoAtual.name = nn;
-            document.querySelector('.file-card.selected .file-name').innerText = nn;
-            document.getElementById('nome-arquivo-sel').innerText = nn;
-        } else alert(d.msg);
-    } catch (e) { console.error(e); }
-    finally { btn.innerText = t; btn.disabled = false; }
+function controlarRotacao(graus) {
+    viewerState.rotation += graus;
+    aplicarTransformacao();
 }
 
-async function abrirModalCriar() {
-    const n = prompt("Nome Completo:"); if(!n) return;
-    document.body.style.cursor = 'wait';
-    const res = await fetch('/api/criar_funcionario', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nome:n}) });
-    document.body.style.cursor = 'default';
-    if(res.ok) { alert('Criado!'); location.reload(); } else { alert('Erro'); }
+function resetarVisualizacao() {
+    viewerState.scale = 1;
+    viewerState.rotation = 0;
+    viewerState.x = 0; viewerState.y = 0;
+    aplicarTransformacao();
 }
 
-// --- MODAL JUNTAR (MERGE) ---
+function aplicarTransformacao() {
+    const img = document.getElementById('viewer-image');
+    const iframe = document.getElementById('preview-frame');
+    const target = !img.classList.contains('hidden') ? img : iframe;
+    
+    if(target) {
+        target.style.transform = `translate(${viewerState.x}px, ${viewerState.y}px) rotate(${viewerState.rotation}deg) scale(${viewerState.scale})`;
+    }
+}
+
+// Ferramenta Mãozinha (Pan)
+function toggleMover(forceState = null) {
+    const btn = document.getElementById('btn-move');
+    const layer = document.getElementById('drag-layer');
+    const container = document.getElementById('img-container');
+
+    if (forceState !== null) viewerState.moveMode = forceState;
+    else viewerState.moveMode = !viewerState.moveMode;
+
+    if(viewerState.moveMode) {
+        btn.classList.add('active-tool');
+        layer.classList.remove('hidden');
+        container.classList.add('grabbing');
+    } else {
+        btn.classList.remove('active-tool');
+        layer.classList.add('hidden');
+        container.classList.remove('grabbing');
+    }
+}
+
+// Eventos de Mouse para Arrastar
+const containerImg = document.getElementById('img-container');
+
+containerImg.addEventListener('mousedown', (e) => {
+    if(!viewerState.moveMode) return;
+    viewerState.isDragging = true;
+    viewerState.startX = e.clientX - viewerState.x;
+    viewerState.startY = e.clientY - viewerState.y;
+    containerImg.style.cursor = 'grabbing';
+});
+
+window.addEventListener('mousemove', (e) => {
+    if (!viewerState.isDragging) return;
+    e.preventDefault();
+    viewerState.x = e.clientX - viewerState.startX;
+    viewerState.y = e.clientY - viewerState.startY;
+    aplicarTransformacao();
+});
+
+window.addEventListener('mouseup', () => {
+    if(viewerState.isDragging) {
+        viewerState.isDragging = false;
+        containerImg.style.cursor = 'grab';
+    }
+});
+
+// ======================================================
+// 6. MODAL JUNTAR (MERGE)
+// ======================================================
 function abrirModalJuntar() {
     sincronizarTiposDocumento();
     const modal = document.getElementById('modal-juntar');
@@ -406,15 +417,21 @@ function abrirModalJuntar() {
 
     list.innerHTML = '';
     selecionados.forEach(arq => {
-        const thumb = arq.thumbnailLink || 'https://via.placeholder.com/100x140?text=PDF';
+        const thumb = arq.thumbnailLink ? arq.thumbnailLink.replace('=s220', '=s800') : 'https://via.placeholder.com/100x140?text=PDF';
         const div = document.createElement('div');
         div.className = 'merge-card';
         div.dataset.id = arq.id; 
+        
         div.innerHTML = `
             <button class="btn-remove-merge" onclick="this.parentElement.remove()">×</button>
             <img src="${thumb}" class="merge-thumb" referrerpolicy="no-referrer">
             <div class="merge-name">${arq.name}</div>
         `;
+        
+        // Zoom na miniatura
+        const img = div.querySelector('img');
+        img.ondblclick = () => mostrarZoomMiniatura(img.src);
+
         list.appendChild(div);
     });
 
@@ -446,7 +463,7 @@ async function confirmarJuncao() {
         if(data.status === 'success') {
             alert("Arquivos juntados com sucesso!");
             document.getElementById('modal-juntar').style.display = 'none';
-            toggleModoSelecao(true); // Sai da seleção
+            toggleModoSelecao(true); 
             carregarArquivosDaPasta(pastaAtualId);
         } else {
             alert("Erro: " + data.msg);
@@ -455,7 +472,9 @@ async function confirmarJuncao() {
     finally { document.getElementById('loading-overlay').style.display = 'none'; }
 }
 
-// --- MODAL SEPARAR (SPLIT) ---
+// ======================================================
+// 7. MODAL SEPARAR (SPLIT - VERSÃO ULTRA RÁPIDA / THUMBNAIL API)
+// ======================================================
 async function abrirSeparadorDragDrop() {
     if(!arquivoAtual || !arquivoAtual.mimeType.includes('pdf')) return alert("Selecione um PDF");
     
@@ -467,29 +486,34 @@ async function abrirSeparadorDragDrop() {
     sourceList.innerHTML = '';
     groupsContainer.innerHTML = '';
     loading.style.display = 'flex';
-    modal.style.display = 'flex';
-
+    
     try {
+        // 1. Baixa e conta páginas
         const res = await fetch(`/api/proxy_pdf/${arquivoAtual.id}`);
         const blob = await res.blob();
         const url = URL.createObjectURL(blob);
         const pdf = await pdfjsLib.getDocument(url).promise;
+        const totalPaginas = pdf.numPages;
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i);
-            const viewport = page.getViewport({scale: 0.3});
+        modal.style.display = 'flex'; 
+
+        // 2. Gera as imagens apontando para a API do Python (iLovePDF Style)
+        for (let i = 0; i < totalPaginas; i++) {
             const divPage = document.createElement('div');
             divPage.className = 'page-card';
-            divPage.dataset.pageNum = i - 1; 
+            divPage.dataset.pageNum = i; 
             
-            const canvas = document.createElement('canvas');
-            const ctx = canvas.getContext('2d');
-            canvas.height = viewport.height; canvas.width = viewport.width;
+            // URL mágica que traz a página como imagem PNG
+            const imgUrl = `/api/thumbnail/${arquivoAtual.id}/${i}`;
             
-            await page.render({canvasContext: ctx, viewport: viewport}).promise;
+            divPage.innerHTML = `
+                <img src="${imgUrl}" style="width:100%; height:95px; object-fit:contain;" loading="lazy">
+                <span>Pág ${i + 1}</span>
+            `;
             
-            divPage.appendChild(canvas);
-            divPage.innerHTML += `<span>Pág ${i}</span>`;
+            // Zoom na miniatura
+            divPage.ondblclick = () => mostrarZoomMiniatura(imgUrl);
+
             sourceList.appendChild(divPage);
         }
 
@@ -564,122 +588,140 @@ async function confirmarSeparacao() {
     }
 }
 
-// --- VISUALIZADOR AVANÇADO ---
-let viewerState = { 
-    scale: 1, rotation: 0, x: 0, y: 0, 
-    isDragging: false, startX: 0, startY: 0, moveMode: false 
-};
+// ======================================================
+// 8. UTILITÁRIOS E UPLOAD
+// ======================================================
+function setupDragAndDrop() {
+    const dropZone = document.getElementById('drag-overlay');
+    let dragCounter = 0;
 
-async function abrirVisualizadorCompleto(arq) {
-    if(!arq) arq = arquivoAtual;
-    if(!arq) return;
+    // CORREÇÃO: Só previne default se for arquivo externo
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        document.body.addEventListener(eventName, e => {
+            if (e.dataTransfer.types.includes('Files')) {
+                e.preventDefault(); 
+                e.stopPropagation();
+            }
+        }, false);
+    });
 
-    arquivoAtual = arq; 
-    const modal = document.getElementById('modal-visualizacao');
-    const titulo = document.getElementById('modal-titulo');
-    const controls = document.getElementById('viewer-controls');
-    const imgElement = document.getElementById('viewer-image');
-    const iframeElement = document.getElementById('preview-frame');
+    document.body.addEventListener('dragenter', (e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragCounter++;
+        if (pastaAtualId) dropZone.classList.remove('hidden');
+    });
+
+    document.body.addEventListener('dragleave', (e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragCounter--;
+        if (dragCounter === 0) dropZone.classList.add('hidden');
+    });
+
+    document.body.addEventListener('drop', (e) => {
+        if (!e.dataTransfer.types.includes('Files')) return;
+        dragCounter = 0;
+        dropZone.classList.add('hidden');
+        if(pastaAtualId) {
+            handleFiles(e.dataTransfer.files);
+        } else {
+            alert("Selecione um funcionário e uma pasta antes de soltar arquivos.");
+        }
+    });
+}
+
+function handleFileSelect(event) {
+    const files = event.target.files;
+    if(files.length > 0) handleFiles(files);
+}
+
+async function handleFiles(files) {
+    if(!pastaAtualId) return alert("Nenhuma pasta selecionada.");
     
-    titulo.innerText = arq.name;
-    modal.style.display = 'flex';
+    const loading = document.getElementById('loading-overlay');
+    loading.style.display = 'flex';
+
+    for (let i = 0; i < files.length; i++) {
+        const formData = new FormData();
+        formData.append('file', files[i]);
+        formData.append('folder_id', pastaAtualId);
+
+        try {
+            await fetch('/api/upload', { method: 'POST', body: formData });
+        } catch (e) {
+            console.error("Erro upload", e);
+        }
+    }
+
+    loading.style.display = 'none';
+    carregarArquivosDaPasta(pastaAtualId);
+}
+
+function toggleInputs() {
+    const f = document.getElementById('check-filho').checked;
+    document.getElementById('input-filho').disabled = !f;
+    if(f) document.getElementById('check-conjuge').checked = false;
+    else if(document.getElementById('check-conjuge').checked) document.getElementById('check-filho').checked = false;
+}
+
+async function renomearArquivo() {
+    if (!arquivoAtual) return;
+    const btn = document.querySelector('.btn-rename');
+    const t = btn.innerText; btn.innerText = "..."; btn.disabled = true;
+
+    try {
+        const tipo = document.getElementById('doc-type').value;
+        const ext = arquivoAtual.name.includes('.') ? arquivoAtual.name.split('.').pop() : 'pdf';
+        let n = formatarNomeVisual(nomeFuncionarioAtual); 
+        let nn = `${tipo} - ${n}.${ext}`;
+        if(document.getElementById('check-conjuge').checked) nn = `${tipo} (Cônjuge) - ${n}.${ext}`;
+        else if(document.getElementById('check-filho').checked) {
+            let fi = document.getElementById('input-filho').value;
+            if(!fi) return alert("Nome filho!");
+            nn = `${tipo} (Filho ${formatarNomeVisual(fi)}) - ${n}.${ext}`;
+        }
+
+        const res = await fetch('/api/renomear', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ id: arquivoAtual.id, new_name: nn })
+        });
+
+        const d = await res.json();
+        if(d.status === 'success') {
+            arquivoAtual.name = nn;
+            document.querySelector('.file-card.selected .file-name').innerText = nn;
+            document.getElementById('nome-arquivo-sel').innerText = nn;
+        } else alert(d.msg);
+    } catch (e) { console.error(e); }
+    finally { btn.innerText = t; btn.disabled = false; }
+}
+
+async function abrirModalCriar() {
+    const n = prompt("Nome Completo:"); if(!n) return;
+    document.body.style.cursor = 'wait';
+    const res = await fetch('/api/criar_funcionario', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({nome:n}) });
+    document.body.style.cursor = 'default';
+    if(res.ok) { alert('Criado!'); location.reload(); } else { alert('Erro'); }
+}
+
+// Modal Zoom Rápido para Miniaturas
+function mostrarZoomMiniatura(src) {
+    const overlay = document.getElementById('thumb-zoom-overlay');
+    const img = document.getElementById('thumb-zoom-img');
     
-    resetarVisualizacao();
+    if(src.includes('googleusercontent') && src.includes('=s')) {
+        let parts = src.split('=s');
+        src = parts[0] + '=s1600'; 
+    }
     
-    imgElement.className = 'viewer-element hidden';
-    iframeElement.className = 'viewer-element hidden';
-    controls.style.visibility = 'visible'; 
-
-    if (arq.mimeType.includes('image')) {
-        imgElement.classList.remove('hidden');
-        imgElement.src = `/api/proxy_pdf/${arq.id}`; 
-        toggleMover(true); 
-    } else {
-        iframeElement.classList.remove('hidden');
-        iframeElement.src = `https://drive.google.com/file/d/${arq.id}/preview`;
-        toggleMover(false);
-    }
+    img.src = src;
+    overlay.style.display = 'flex';
 }
-
-// Controles
-function controlarZoom(delta) {
-    viewerState.scale += delta;
-    if (viewerState.scale < 0.1) viewerState.scale = 0.1; 
-    aplicarTransformacao();
-}
-
-function controlarRotacao(graus) {
-    viewerState.rotation += graus;
-    aplicarTransformacao();
-}
-
-function resetarVisualizacao() {
-    viewerState.scale = 1;
-    viewerState.rotation = 0;
-    viewerState.x = 0; viewerState.y = 0;
-    aplicarTransformacao();
-}
-
-function aplicarTransformacao() {
-    const img = document.getElementById('viewer-image');
-    const iframe = document.getElementById('preview-frame');
-    const target = !img.classList.contains('hidden') ? img : iframe;
-    
-    if(target) {
-        target.style.transform = `translate(${viewerState.x}px, ${viewerState.y}px) rotate(${viewerState.rotation}deg) scale(${viewerState.scale})`;
-    }
-}
-
-// Lógica Mãozinha (Arrastar)
-function toggleMover(forceState = null) {
-    const btn = document.getElementById('btn-move');
-    const layer = document.getElementById('drag-layer');
-    const container = document.getElementById('img-container');
-
-    if (forceState !== null) viewerState.moveMode = forceState;
-    else viewerState.moveMode = !viewerState.moveMode;
-
-    if(viewerState.moveMode) {
-        btn.classList.add('active-tool');
-        layer.classList.remove('hidden');
-        container.classList.add('grabbing');
-    } else {
-        btn.classList.remove('active-tool');
-        layer.classList.add('hidden');
-        container.classList.remove('grabbing');
-    }
-}
-
-// Eventos de Mouse (Pan)
-const containerImg = document.getElementById('img-container');
-
-containerImg.addEventListener('mousedown', (e) => {
-    if(!viewerState.moveMode) return;
-    viewerState.isDragging = true;
-    viewerState.startX = e.clientX - viewerState.x;
-    viewerState.startY = e.clientY - viewerState.y;
-    containerImg.style.cursor = 'grabbing';
-});
-
-window.addEventListener('mousemove', (e) => {
-    if (!viewerState.isDragging) return;
-    e.preventDefault();
-    viewerState.x = e.clientX - viewerState.startX;
-    viewerState.y = e.clientY - viewerState.startY;
-    aplicarTransformacao();
-});
-
-window.addEventListener('mouseup', () => {
-    if(viewerState.isDragging) {
-        viewerState.isDragging = false;
-        containerImg.style.cursor = 'grab';
-    }
-});
 
 function fecharModal(event, force = false) {
     if (force || event.target.id === 'modal-visualizacao' || event.target.classList.contains('btn-close')) {
         document.getElementById('modal-visualizacao').style.display = 'none';
         document.getElementById('modal-separar').style.display = 'none';
+        document.getElementById('modal-juntar').style.display = 'none';
         document.getElementById('preview-frame').src = '';
         document.getElementById('viewer-image').src = '';
     }
