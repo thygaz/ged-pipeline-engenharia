@@ -6,6 +6,7 @@
     <title>Sistema RH Web</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script>
         pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -82,6 +83,10 @@
                 
                 <button class="btn-purple hidden" id="btn-separar-panel" onclick="acaoSeparar()">
                     <span class="material-icons">call_split</span> Separar
+                </button>
+
+                <button class="btn-delete" onclick="acaoExcluir()">
+                    <span class="material-icons">delete</span>
                 </button>
 
                 <button class="btn-view" id="btn-ver" onclick="abrirVisualizadorCompleto(arquivoAtual)">
@@ -168,17 +173,15 @@
         </div>
     </div>
 
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
-
     <div id="thumb-zoom-overlay" class="modal-overlay" style="z-index: 3000;" onclick="this.style.display='none'">
         <div style="position: relative; height: 90%; display: flex; justify-content: center; align-items: center;">
             <img id="thumb-zoom-img" src="" style="max-height: 100%; max-width: 90vw; border: 2px solid #fff; box-shadow: 0 0 20px rgba(0,0,0,0.8); background: #fff;">
             <div style="position: absolute; top: -40px; color: white; font-weight: bold; background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 4px;">
-                Clique em qualquer lugar para fechar
+                Clique para fechar
             </div>
         </div>
     </div>
 
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
-
 </html>

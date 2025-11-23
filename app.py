@@ -1,14 +1,15 @@
 import os
 import pickle
 import io
-import shutil # Para manipulação de arquivos
+import shutil # Para manipulação de arquivos e cache
 from flask import Flask, render_template, jsonify, request, send_file
 from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
 from PyPDF2 import PdfReader, PdfWriter, PdfMerger
-import fitz  # PyMuPDF (Para thumbnails super rápidas)
+from werkzeug.utils import secure_filename
+import fitz  # PyMuPDF (Essencial para as miniaturas rápidas)
 
 app = Flask(__name__)
 
@@ -86,18 +87,18 @@ def listar_arquivos_pasta(folder_id):
         return jsonify({"arquivos": results.get('files', []), "folder_id": folder_id})
     except Exception as e: return jsonify({"error": str(e)}), 500
 
-# --- DOWNLOAD INTELIGENTE (COM CACHE) ---
+# --- DOWNLOAD E VISUALIZAÇÃO (COM CACHE) ---
 
 @app.route('/api/proxy_pdf/<file_id>')
 def proxy_pdf(file_id):
     try:
         caminho_local = os.path.join(CACHE_DIR, f"{file_id}.pdf")
         
-        # 1. Se já tem no cache, entrega direto (Rápido)
+        # 1. Cache Hit
         if os.path.exists(caminho_local):
             return send_file(caminho_local, mimetype='application/pdf')
 
-        # 2. Se não tem, baixa do Drive
+        # 2. Cache Miss (Baixa do Google)
         service = get_service()
         request_drive = service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -105,7 +106,7 @@ def proxy_pdf(file_id):
         done = False
         while done is False: _, done = downloader.next_chunk()
         
-        # 3. Salva no Cache para a próxima vez
+        # 3. Salva no Cache
         fh.seek(0)
         with open(caminho_local, 'wb') as f:
             f.write(fh.getbuffer())
@@ -115,16 +116,14 @@ def proxy_pdf(file_id):
     except Exception as e:
         return str(e), 500
 
-# --- ROTA DE THUMBNAIL (ESTRATÉGIA ILOVEPDF) ---
-# Gera uma imagem leve de uma página específica do PDF
+# --- ROTA DE MINIATURAS (PERFORMANCE MÁXIMA) ---
 @app.route('/api/thumbnail/<file_id>/<int:page_num>')
 def get_page_thumbnail(file_id, page_num):
     try:
         caminho_local = os.path.join(CACHE_DIR, f"{file_id}.pdf")
         
-        # Garante que o arquivo está no cache
+        # Garante arquivo local
         if not os.path.exists(caminho_local):
-            # Se não tiver (raro, pois proxy é chamado antes), forçamos o download
             service = get_service()
             req = service.files().get_media(fileId=file_id)
             fh = io.BytesIO()
@@ -134,7 +133,7 @@ def get_page_thumbnail(file_id, page_num):
             fh.seek(0)
             with open(caminho_local, 'wb') as f: f.write(fh.getbuffer())
 
-        # Abre o PDF com PyMuPDF (Muito rápido)
+        # Processamento Ultrarrápido com PyMuPDF (C++)
         doc = fitz.open(caminho_local)
         
         if page_num < 0 or page_num >= len(doc):
@@ -142,9 +141,7 @@ def get_page_thumbnail(file_id, page_num):
 
         page = doc.load_page(page_num)
         
-        # Gera a imagem (Matrix 0.3 = Baixa resolução para lista rápida)
-        # Se quiser HD, o frontend pode pedir outra rota ou mudar params, 
-        # mas para lista 0.3 é perfeito e voa.
+        # Matrix 0.3 = Baixa Resolução (Rápido para listas)
         pix = page.get_pixmap(matrix=fitz.Matrix(0.3, 0.3))
         
         output = io.BytesIO(pix.tobytes("png"))
@@ -154,7 +151,7 @@ def get_page_thumbnail(file_id, page_num):
         print(f"Erro thumb: {e}")
         return str(e), 500
 
-# --- OPERAÇÕES DE ARQUIVO ---
+# --- OPERAÇÕES DE ARQUIVO (CRIAR, DELETAR, RENOMEAR) ---
 
 @app.route('/api/upload', methods=['POST'])
 def upload_arquivo():
@@ -181,20 +178,44 @@ def renomear():
         return jsonify({"status": "success"})
     except Exception as e: return jsonify({"status": "error", 'msg': str(e)}), 500
 
+@app.route('/api/excluir_arquivos', methods=['POST'])
+def excluir_arquivos():
+    data = request.json
+    ids = data.get('ids')
+    if not ids: return jsonify({"error": "Nada para excluir"}), 400
+    
+    try:
+        service = get_service()
+        for file_id in ids:
+            try:
+                service.files().delete(fileId=file_id).execute()
+                # Limpa do cache local também
+                caminho_local = os.path.join(CACHE_DIR, f"{file_id}.pdf")
+                if os.path.exists(caminho_local):
+                    os.remove(caminho_local)
+            except Exception as e:
+                print(f"Erro ao deletar {file_id}: {e}")
+                
+        return jsonify({"status": "success"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+# --- LÓGICA DE SEPARAR (SPLIT) - CRIA NOVOS E DELETA O VELHO ---
 @app.route('/api/separar_blocos', methods=['POST'])
 def separar_blocos():
     data = request.json
+    original_id = data.get('id')
+    
     try:
-        # Usa o arquivo do cache se tiver, senão baixa
-        caminho_local = os.path.join(CACHE_DIR, f"{data.get('id')}.pdf")
+        # Usa cache para ler o original
+        caminho_local = os.path.join(CACHE_DIR, f"{original_id}.pdf")
         if not os.path.exists(caminho_local):
-            # (Lógica de download repetida se não tiver cache, mas deve ter)
-            # Para simplificar, assumimos que proxy_pdf foi chamado antes pela UI
-            return jsonify({"status": "error", "msg": "Abra o arquivo primeiro para carregar no cache"}), 400
+            return jsonify({"status": "error", "msg": "Arquivo não encontrado no cache"}), 400
 
         pdf = PdfReader(caminho_local)
         service = get_service()
 
+        # 1. Cria os NOVOS arquivos no Drive
         for g in data.get('grupos'):
             writer = PdfWriter()
             for p in g['paginas']: 
@@ -207,14 +228,24 @@ def separar_blocos():
             media = MediaIoBaseUpload(out, mimetype='application/pdf', resumable=True)
             service.files().create(body={'name': g['nome'], 'parents': [data.get('folder_id')]}, media_body=media).execute()
             
+        # 2. DELETA o arquivo ORIGINAL (O "Misturado")
+        try:
+            service.files().delete(fileId=original_id).execute()
+            # Remove do cache também
+            if os.path.exists(caminho_local):
+                os.remove(caminho_local)
+        except Exception as e:
+            print(f"Aviso: Erro ao deletar original {original_id}: {e}")
+
         return jsonify({"status": "success"})
     except Exception as e: return jsonify({"status": "error", "msg": str(e)}), 500
 
+# --- LÓGICA DE JUNTAR (MERGE) - CRIA NOVO E DELETA VELHOS ---
 @app.route('/api/juntar_arquivos', methods=['POST'])
 def juntar_arquivos():
     data = request.json
     ids = data.get('ids')
-    if not ids: return jsonify({"error": "Sem arquivos"}), 400
+    if not ids or len(ids) < 2: return jsonify({"error": "Sem arquivos"}), 400
     
     try:
         service = get_service()
@@ -222,23 +253,20 @@ def juntar_arquivos():
         streams = []
 
         for fid in ids:
-            # Tenta cache primeiro
             caminho_local = os.path.join(CACHE_DIR, f"{fid}.pdf")
-            if os.path.exists(caminho_local):
-                fh = open(caminho_local, 'rb')
-                merger.append(fh)
-                streams.append(fh) # Guarda para fechar depois
-            else:
-                # Baixa se não tiver
+            # Garante download se não tiver no cache
+            if not os.path.exists(caminho_local):
                 req = service.files().get_media(fileId=fid)
                 fh = io.BytesIO()
                 downloader = MediaIoBaseDownload(fh, req)
                 done = False
                 while done is False: _, done = downloader.next_chunk()
                 fh.seek(0)
-                merger.append(fh)
-                # Salva no cache já que baixou
                 with open(caminho_local, 'wb') as f: f.write(fh.getbuffer())
+
+            fh = open(caminho_local, 'rb')
+            merger.append(fh)
+            streams.append(fh)
 
         out = io.BytesIO()
         merger.write(out)
@@ -246,9 +274,16 @@ def juntar_arquivos():
         for s in streams: s.close()
         out.seek(0)
         
+        # 1. Upload do Arquivo Juntado
         media = MediaIoBaseUpload(out, mimetype='application/pdf', resumable=True)
         service.files().create(body={'name': data.get('nome'), 'parents': [data.get('folder_id')]}, media_body=media).execute()
         
+        # 2. Deleta os arquivos parciais originais
+        for fid in ids:
+            try:
+                service.files().delete(fileId=fid).execute()
+            except: pass
+
         return jsonify({"status": "success"})
     except Exception as e: return jsonify({"status": "error", "msg": str(e)}), 500
 
@@ -264,5 +299,4 @@ def criar_funcionario():
     except Exception as e: return jsonify({"status": "error", "msg": str(e)}), 500
 
 if __name__ == '__main__':
-    # Aceita conexões da rede local
     app.run(host='0.0.0.0', port=5000, debug=True)

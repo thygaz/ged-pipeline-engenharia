@@ -269,7 +269,7 @@ select:focus, input:focus { border-color: var(--accent); }
 
 .check-group { color: var(--text-muted); font-size: 13px; display: flex; align-items: center; gap: 5px; cursor: pointer; }
 
-.btn-action, .btn-rename, .btn-view, .btn-orange, .btn-purple {
+.btn-action, .btn-rename, .btn-view, .btn-orange, .btn-purple, .btn-delete {
     border: none; padding: 0 15px; height: 36px; border-radius: 4px; 
     cursor: pointer; color: white; font-weight: bold; font-size: 13px;
     display: flex; align-items: center; justify-content: center; gap: 5px; transition: 0.2s;
@@ -282,6 +282,8 @@ select:focus, input:focus { border-color: var(--accent); }
 .btn-orange:hover { background: #d35400; }
 .btn-purple { background: var(--purple); }
 .btn-purple:hover { background: #8e44ad; }
+.btn-delete { background: var(--red); margin-left: 5px; }
+.btn-delete:hover { background: #c0392b; }
 
 /* Botão flutuante (Seleção Múltipla) ativação visual */
 .btn-tool.selection-active { 
@@ -407,7 +409,7 @@ iframe.viewer-element {
     padding: 5px; flex-shrink: 0; cursor: grab; border: 1px solid #444; 
     text-align: center; position: relative; 
 }
-.merge-card img { cursor: zoom-in; } /* Zoom */
+.merge-card img { cursor: zoom-in; }
 
 .merge-thumb { 
     width: 100%; height: 80px; object-fit: contain; 

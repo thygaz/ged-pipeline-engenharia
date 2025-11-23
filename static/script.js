@@ -64,6 +64,13 @@ function sincronizarTiposDocumento() {
     if(original && destino) destino.innerHTML = original.innerHTML;
 }
 
+function toggleInputs() { 
+    const f = document.getElementById('check-filho').checked; 
+    document.getElementById('input-filho').disabled = !f; 
+    if(f) document.getElementById('check-conjuge').checked = false; 
+    else if(document.getElementById('check-conjuge').checked) document.getElementById('check-filho').checked = false; 
+}
+
 // ======================================================
 // 3. NAVEGAÇÃO (LISTAS E ABAS)
 // ======================================================
@@ -221,381 +228,13 @@ function selecionarArquivo(arq, card) {
 }
 
 // ======================================================
-// 4. SELEÇÃO MÚLTIPLA E BOTÕES
-// ======================================================
-function toggleModoSelecao(forceFalse = false) {
-    if(forceFalse) modoSelecao = true; // Inverte abaixo
-    modoSelecao = !modoSelecao;
-    
-    const btn = document.getElementById('btn-select-mode');
-    const checks = document.querySelectorAll('.card-checkbox');
-    const painel = document.getElementById('painel-acoes');
-
-    if (modoSelecao) {
-        btn.classList.add('selection-active');
-        checks.forEach(c => c.style.display = 'block');
-        painel.classList.add('hidden'); // Esconde barra inferior
-        arquivoAtual = null;
-        document.querySelectorAll('.file-card').forEach(c => c.classList.remove('selected'));
-    } else {
-        btn.classList.remove('selection-active');
-        checks.forEach(c => c.style.display = 'none');
-        limparSelecao();
-    }
-    atualizarBotoesInterface();
-}
-
-function toggleSelecaoArquivo(arq, card) {
-    const index = selecionados.findIndex(a => a.id === arq.id);
-    if (index >= 0) {
-        selecionados.splice(index, 1);
-        card.classList.remove('multi-selected');
-    } else {
-        selecionados.push(arq);
-        card.classList.add('multi-selected');
-    }
-    atualizarBotoesInterface();
-}
-
-function limparSelecao() {
-    selecionados = [];
-    document.querySelectorAll('.file-card').forEach(c => c.classList.remove('multi-selected'));
-    atualizarBotoesInterface();
-}
-
-function atualizarBotoesInterface() {
-    // 1. Botão JUNTAR (Flutuante Laranja)
-    const btnJuntar = document.getElementById('btn-float-merge');
-    if(btnJuntar) btnJuntar.remove();
-
-    if (selecionados.length >= 2) {
-        const btn = document.createElement('button');
-        btn.id = 'btn-float-merge';
-        btn.className = 'btn-orange';
-        btn.style.cssText = `position: fixed; bottom: 30px; right: 30px; padding: 15px 30px; border-radius: 50px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; gap: 8px; font-size: 16px;`;
-        btn.innerHTML = `<span class="material-icons">merge</span> JUNTAR (${selecionados.length})`;
-        btn.onclick = abrirModalJuntar;
-        document.body.appendChild(btn);
-    }
-
-    // 2. Botão SEPARAR (Na Barra Inferior) - Cor Roxo
-    const btnSeparar = document.getElementById('btn-separar-panel');
-    
-    // Lógica: Só mostra se estiver no modo normal (1 arquivo) E for PDF
-    if (!modoSelecao && arquivoAtual && arquivoAtual.mimeType.includes('pdf')) {
-        btnSeparar.classList.remove('hidden');
-    } else {
-        btnSeparar.classList.add('hidden');
-    }
-}
-
-// Função chamada pelo botão da barra
-function acaoSeparar() {
-    if (arquivoAtual) {
-        abrirSeparadorDragDrop();
-    }
-}
-
-// ======================================================
-// 5. VISUALIZADOR AVANÇADO (COM ARRASTAR)
-// ======================================================
-async function abrirVisualizadorCompleto(arq) {
-    if(!arq) arq = arquivoAtual;
-    if(!arq) return;
-
-    arquivoAtual = arq; 
-    const modal = document.getElementById('modal-visualizacao');
-    const titulo = document.getElementById('modal-titulo');
-    const controls = document.getElementById('viewer-controls');
-    const imgElement = document.getElementById('viewer-image');
-    const iframeElement = document.getElementById('preview-frame');
-    
-    titulo.innerText = arq.name;
-    modal.style.display = 'flex';
-    
-    resetarVisualizacao();
-    
-    // Limpa classes
-    imgElement.className = 'viewer-element hidden';
-    iframeElement.className = 'viewer-element hidden';
-    controls.style.visibility = 'visible'; 
-
-    if (arq.mimeType.includes('image')) {
-        imgElement.classList.remove('hidden');
-        imgElement.src = `/api/proxy_pdf/${arq.id}`; 
-        toggleMover(true); // Imagem pode arrastar por padrão
-    } else {
-        iframeElement.classList.remove('hidden');
-        iframeElement.src = `https://drive.google.com/file/d/${arq.id}/preview`;
-        toggleMover(false); // PDF começa travado para rolar página
-    }
-}
-
-function controlarZoom(delta) {
-    viewerState.scale += delta;
-    if (viewerState.scale < 0.1) viewerState.scale = 0.1; 
-    aplicarTransformacao();
-}
-
-function controlarRotacao(graus) {
-    viewerState.rotation += graus;
-    aplicarTransformacao();
-}
-
-function resetarVisualizacao() {
-    viewerState.scale = 1;
-    viewerState.rotation = 0;
-    viewerState.x = 0; viewerState.y = 0;
-    aplicarTransformacao();
-}
-
-function aplicarTransformacao() {
-    const img = document.getElementById('viewer-image');
-    const iframe = document.getElementById('preview-frame');
-    const target = !img.classList.contains('hidden') ? img : iframe;
-    
-    if(target) {
-        target.style.transform = `translate(${viewerState.x}px, ${viewerState.y}px) rotate(${viewerState.rotation}deg) scale(${viewerState.scale})`;
-    }
-}
-
-// Ferramenta Mãozinha (Pan)
-function toggleMover(forceState = null) {
-    const btn = document.getElementById('btn-move');
-    const layer = document.getElementById('drag-layer');
-    const container = document.getElementById('img-container');
-
-    if (forceState !== null) viewerState.moveMode = forceState;
-    else viewerState.moveMode = !viewerState.moveMode;
-
-    if(viewerState.moveMode) {
-        btn.classList.add('active-tool');
-        layer.classList.remove('hidden');
-        container.classList.add('grabbing');
-    } else {
-        btn.classList.remove('active-tool');
-        layer.classList.add('hidden');
-        container.classList.remove('grabbing');
-    }
-}
-
-// Eventos de Mouse para Arrastar
-const containerImg = document.getElementById('img-container');
-
-containerImg.addEventListener('mousedown', (e) => {
-    if(!viewerState.moveMode) return;
-    viewerState.isDragging = true;
-    viewerState.startX = e.clientX - viewerState.x;
-    viewerState.startY = e.clientY - viewerState.y;
-    containerImg.style.cursor = 'grabbing';
-});
-
-window.addEventListener('mousemove', (e) => {
-    if (!viewerState.isDragging) return;
-    e.preventDefault();
-    viewerState.x = e.clientX - viewerState.startX;
-    viewerState.y = e.clientY - viewerState.startY;
-    aplicarTransformacao();
-});
-
-window.addEventListener('mouseup', () => {
-    if(viewerState.isDragging) {
-        viewerState.isDragging = false;
-        containerImg.style.cursor = 'grab';
-    }
-});
-
-// ======================================================
-// 6. MODAL JUNTAR (MERGE)
-// ======================================================
-function abrirModalJuntar() {
-    sincronizarTiposDocumento();
-    const modal = document.getElementById('modal-juntar');
-    const list = document.getElementById('merge-list');
-    const inputNome = document.getElementById('merge-name-preview');
-    const selectTipo = document.getElementById('merge-type');
-
-    list.innerHTML = '';
-    selecionados.forEach(arq => {
-        const thumb = arq.thumbnailLink ? arq.thumbnailLink.replace('=s220', '=s800') : 'https://via.placeholder.com/100x140?text=PDF';
-        const div = document.createElement('div');
-        div.className = 'merge-card';
-        div.dataset.id = arq.id; 
-        
-        div.innerHTML = `
-            <button class="btn-remove-merge" onclick="this.parentElement.remove()">×</button>
-            <img src="${thumb}" class="merge-thumb" referrerpolicy="no-referrer">
-            <div class="merge-name">${arq.name}</div>
-        `;
-        
-        // Zoom na miniatura
-        const img = div.querySelector('img');
-        img.ondblclick = () => mostrarZoomMiniatura(img.src);
-
-        list.appendChild(div);
-    });
-
-    new Sortable(list, { animation: 150, ghostClass: 'ghost' });
-    
-    const nomePessoa = formatarNomeVisual(nomeFuncionarioAtual);
-    const updateNome = () => { inputNome.value = `${selectTipo.value} - ${nomePessoa}.pdf`; };
-    selectTipo.onchange = updateNome;
-    updateNome(); 
-    
-    modal.style.display = 'flex';
-}
-
-async function confirmarJuncao() {
-    const cards = document.querySelectorAll('.merge-card');
-    const idsOrdenados = Array.from(cards).map(c => c.dataset.id);
-    const nomeFinal = document.getElementById('merge-name-preview').value;
-
-    if(idsOrdenados.length < 2) return alert("Precisa de pelo menos 2 arquivos.");
-    document.getElementById('loading-overlay').style.display = 'flex';
-
-    try {
-        const res = await fetch('/api/juntar_arquivos', {
-            method: 'POST', headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ ids: idsOrdenados, nome: nomeFinal, folder_id: pastaAtualId })
-        });
-        
-        const data = await res.json();
-        if(data.status === 'success') {
-            alert("Arquivos juntados com sucesso!");
-            document.getElementById('modal-juntar').style.display = 'none';
-            toggleModoSelecao(true); 
-            carregarArquivosDaPasta(pastaAtualId);
-        } else {
-            alert("Erro: " + data.msg);
-        }
-    } catch (e) { alert("Erro ao processar."); } 
-    finally { document.getElementById('loading-overlay').style.display = 'none'; }
-}
-
-// ======================================================
-// 7. MODAL SEPARAR (SPLIT - VERSÃO ULTRA RÁPIDA / THUMBNAIL API)
-// ======================================================
-async function abrirSeparadorDragDrop() {
-    if(!arquivoAtual || !arquivoAtual.mimeType.includes('pdf')) return alert("Selecione um PDF");
-    
-    const modal = document.getElementById('modal-separar');
-    const sourceList = document.getElementById('split-source-list');
-    const groupsContainer = document.getElementById('split-groups-container');
-    const loading = document.getElementById('loading-overlay');
-
-    sourceList.innerHTML = '';
-    groupsContainer.innerHTML = '';
-    loading.style.display = 'flex';
-    
-    try {
-        // 1. Baixa e conta páginas
-        const res = await fetch(`/api/proxy_pdf/${arquivoAtual.id}`);
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const pdf = await pdfjsLib.getDocument(url).promise;
-        const totalPaginas = pdf.numPages;
-
-        modal.style.display = 'flex'; 
-
-        // 2. Gera as imagens apontando para a API do Python (iLovePDF Style)
-        for (let i = 0; i < totalPaginas; i++) {
-            const divPage = document.createElement('div');
-            divPage.className = 'page-card';
-            divPage.dataset.pageNum = i; 
-            
-            // URL mágica que traz a página como imagem PNG
-            const imgUrl = `/api/thumbnail/${arquivoAtual.id}/${i}`;
-            
-            divPage.innerHTML = `
-                <img src="${imgUrl}" style="width:100%; height:95px; object-fit:contain;" loading="lazy">
-                <span>Pág ${i + 1}</span>
-            `;
-            
-            // Zoom na miniatura
-            divPage.ondblclick = () => mostrarZoomMiniatura(imgUrl);
-
-            sourceList.appendChild(divPage);
-        }
-
-        new Sortable(sourceList, { group: 'shared', animation: 150, sort: false });
-        adicionarGrupoSplit();
-
-    } catch (e) {
-        alert("Erro: " + e);
-        modal.style.display = 'none';
-    } finally {
-        loading.style.display = 'none';
-    }
-}
-
-function adicionarGrupoSplit() {
-    const container = document.getElementById('split-groups-container');
-    const divGrupo = document.createElement('div');
-    divGrupo.className = 'doc-group';
-    const selectClone = document.getElementById('doc-type').cloneNode(true);
-    selectClone.id = ""; 
-    
-    divGrupo.innerHTML = `
-        <div class="doc-group-header">
-            <div class="doc-group-title"><span>Novo Doc</span><button class="btn-remove-group" onclick="this.closest('.doc-group').remove()">×</button></div>
-            <div class="select-container"></div>
-        </div>
-        <div class="doc-group-list sortable-drag-area"></div>
-    `;
-    divGrupo.querySelector('.select-container').appendChild(selectClone);
-    container.appendChild(divGrupo);
-    new Sortable(divGrupo.querySelector('.doc-group-list'), { group: 'shared', animation: 150 });
-}
-
-async function confirmarSeparacao() {
-    const gruposDivs = document.querySelectorAll('.doc-group');
-    let payloadGrupos = [];
-    let nomeLimpo = formatarNomeVisual(nomeFuncionarioAtual);
-
-    for(let grupo of gruposDivs) {
-        const tipo = grupo.querySelector('select').value;
-        const paginasElements = grupo.querySelectorAll('.page-card');
-        let indices = [];
-        paginasElements.forEach(el => indices.push(parseInt(el.dataset.pageNum)));
-        
-        if(indices.length > 0) {
-            indices.sort((a, b) => a - b);
-            let nomeArquivo = `${tipo} - ${nomeLimpo}.pdf`;
-            payloadGrupos.push({ nome: nomeArquivo, paginas: indices });
-        }
-    }
-
-    if(payloadGrupos.length === 0) return alert("Crie grupos e arraste páginas.");
-    document.getElementById('loading-overlay').style.display = 'flex';
-
-    const res = await fetch('/api/separar_blocos', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({ 
-            id: arquivoAtual.id, 
-            folder_id: pastaAtualId, 
-            grupos: payloadGrupos 
-        })
-    });
-
-    const data = await res.json();
-    document.getElementById('loading-overlay').style.display = 'none';
-    if(data.status === 'success') {
-        alert("Salvo com sucesso!");
-        document.getElementById('modal-separar').style.display = 'none';
-        carregarArquivosDaPasta(pastaAtualId);
-    } else {
-        alert("Erro: " + data.msg);
-    }
-}
-
-// ======================================================
-// 8. UTILITÁRIOS E UPLOAD
+// 4. UPLOAD DRAG & DROP E RENOMEAR
 // ======================================================
 function setupDragAndDrop() {
     const dropZone = document.getElementById('drag-overlay');
     let dragCounter = 0;
 
-    // CORREÇÃO: Só previne default se for arquivo externo
+    // Só previne default se for arquivo externo (Correção importante)
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         document.body.addEventListener(eventName, e => {
             if (e.dataTransfer.types.includes('Files')) {
@@ -656,13 +295,6 @@ async function handleFiles(files) {
     carregarArquivosDaPasta(pastaAtualId);
 }
 
-function toggleInputs() {
-    const f = document.getElementById('check-filho').checked;
-    document.getElementById('input-filho').disabled = !f;
-    if(f) document.getElementById('check-conjuge').checked = false;
-    else if(document.getElementById('check-conjuge').checked) document.getElementById('check-filho').checked = false;
-}
-
 async function renomearArquivo() {
     if (!arquivoAtual) return;
     const btn = document.querySelector('.btn-rename');
@@ -703,18 +335,337 @@ async function abrirModalCriar() {
     if(res.ok) { alert('Criado!'); location.reload(); } else { alert('Erro'); }
 }
 
-// Modal Zoom Rápido para Miniaturas
-function mostrarZoomMiniatura(src) {
-    const overlay = document.getElementById('thumb-zoom-overlay');
-    const img = document.getElementById('thumb-zoom-img');
+// ======================================================
+// 5. SELEÇÃO MÚLTIPLA E BOTÕES
+// ======================================================
+function toggleModoSelecao(forceFalse = false) {
+    if(forceFalse) modoSelecao = true; // Inverte abaixo
+    modoSelecao = !modoSelecao;
     
-    if(src.includes('googleusercontent') && src.includes('=s')) {
-        let parts = src.split('=s');
-        src = parts[0] + '=s1600'; 
+    const btn = document.getElementById('btn-select-mode');
+    const checks = document.querySelectorAll('.card-checkbox');
+    const painel = document.getElementById('painel-acoes');
+
+    if (modoSelecao) {
+        btn.classList.add('selection-active');
+        checks.forEach(c => c.style.display = 'block');
+        painel.classList.add('hidden'); // Esconde barra inferior
+        arquivoAtual = null;
+        document.querySelectorAll('.file-card').forEach(c => c.classList.remove('selected'));
+    } else {
+        btn.classList.remove('selection-active');
+        checks.forEach(c => c.style.display = 'none');
+        limparSelecao();
     }
+    atualizarBotoesInterface();
+}
+
+function toggleSelecaoArquivo(arq, card) {
+    const index = selecionados.findIndex(a => a.id === arq.id);
+    if (index >= 0) {
+        selecionados.splice(index, 1);
+        card.classList.remove('multi-selected');
+    } else {
+        selecionados.push(arq);
+        card.classList.add('multi-selected');
+    }
+    atualizarBotoesInterface();
+}
+
+function limparSelecao() {
+    selecionados = [];
+    document.querySelectorAll('.file-card').forEach(c => c.classList.remove('multi-selected'));
+    atualizarBotoesInterface();
+}
+
+function atualizarBotoesInterface() {
+    const btnJuntar = document.getElementById('btn-float-merge');
+    const btnSeparar = document.getElementById('btn-separar-panel');
+    if(btnJuntar) btnJuntar.remove();
+
+    // 1. JUNTAR (Flutuante)
+    if (selecionados.length >= 2) {
+        const btn = document.createElement('button');
+        btn.id = 'btn-float-merge';
+        btn.className = 'btn-orange';
+        btn.style.cssText = `position: fixed; bottom: 30px; right: 30px; padding: 15px 30px; border-radius: 50px; box-shadow: 0 5px 20px rgba(0,0,0,0.5); z-index: 2000; display: flex; align-items: center; gap: 8px; font-size: 16px;`;
+        btn.innerHTML = `<span class="material-icons">merge</span> JUNTAR (${selecionados.length})`;
+        btn.onclick = abrirModalJuntar;
+        document.body.appendChild(btn);
+    }
+
+    // 2. SEPARAR (Barra)
+    let alvo = null;
+    if(selecionados.length === 1) alvo = selecionados[0];
+    else if(!modoSelecao && arquivoAtual) alvo = arquivoAtual;
+
+    if(alvo && alvo.mimeType.includes('pdf')) btnSeparar.classList.remove('hidden');
+    else btnSeparar.classList.add('hidden');
+}
+
+function acaoSeparar() {
+    if (arquivoAtual) abrirSeparadorDragDrop();
+}
+
+// ======================================================
+// 6. MODAL JUNTAR (MERGE)
+// ======================================================
+function abrirModalJuntar() {
+    sincronizarTiposDocumento();
+    const modal = document.getElementById('modal-juntar');
+    const list = document.getElementById('merge-list');
+    const inputNome = document.getElementById('merge-name-preview');
+    const selectTipo = document.getElementById('merge-type');
+
+    list.innerHTML = '';
+    selecionados.forEach(arq => {
+        const thumb = arq.thumbnailLink ? arq.thumbnailLink.replace('=s220', '=s800') : 'https://via.placeholder.com/100x140?text=PDF';
+        const div = document.createElement('div');
+        div.className = 'merge-card';
+        div.dataset.id = arq.id; 
+        
+        div.innerHTML = `
+            <button class="btn-remove-merge" onclick="this.parentElement.remove()">×</button>
+            <img src="${thumb}" class="merge-thumb" referrerpolicy="no-referrer">
+            <div class="merge-name">${arq.name}</div>
+        `;
+        
+        div.querySelector('img').ondblclick = () => mostrarZoomMiniatura(div.querySelector('img').src);
+        list.appendChild(div);
+    });
+
+    new Sortable(list, { animation: 150, ghostClass: 'ghost' });
     
-    img.src = src;
-    overlay.style.display = 'flex';
+    const nomePessoa = formatarNomeVisual(nomeFuncionarioAtual);
+    const updateNome = () => { inputNome.value = `${selectTipo.value} - ${nomePessoa}.pdf`; };
+    selectTipo.onchange = updateNome;
+    updateNome(); 
+    
+    modal.style.display = 'flex';
+}
+
+async function confirmarJuncao() {
+    const cards = document.querySelectorAll('.merge-card');
+    const idsOrdenados = Array.from(cards).map(c => c.dataset.id);
+    const nomeFinal = document.getElementById('merge-name-preview').value;
+
+    if(idsOrdenados.length < 2) return alert("Precisa de pelo menos 2 arquivos.");
+    document.getElementById('loading-overlay').style.display = 'flex';
+
+    try {
+        const res = await fetch('/api/juntar_arquivos', {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ ids: idsOrdenados, nome: nomeFinal, folder_id: pastaAtualId })
+        });
+        
+        const data = await res.json();
+        if(data.status === 'success') {
+            alert("Arquivos juntados com sucesso!");
+            document.getElementById('modal-juntar').style.display = 'none';
+            toggleModoSelecao(true); 
+            carregarArquivosDaPasta(pastaAtualId);
+        } else {
+            alert("Erro: " + data.msg);
+        }
+    } catch (e) { alert("Erro ao processar."); } 
+    finally { document.getElementById('loading-overlay').style.display = 'none'; }
+}
+
+// ======================================================
+// 7. MODAL SEPARAR (SPLIT - ULTRA RÁPIDO)
+// ======================================================
+async function abrirSeparadorDragDrop() {
+    if(!arquivoAtual || !arquivoAtual.mimeType.includes('pdf')) return alert("Selecione um PDF");
+    
+    const modal = document.getElementById('modal-separar');
+    const sourceList = document.getElementById('split-source-list');
+    const groupsContainer = document.getElementById('split-groups-container');
+    const loading = document.getElementById('loading-overlay');
+
+    sourceList.innerHTML = '';
+    groupsContainer.innerHTML = '';
+    loading.style.display = 'flex';
+    
+    try {
+        const res = await fetch(`/api/proxy_pdf/${arquivoAtual.id}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const pdf = await pdfjsLib.getDocument(url).promise;
+        const totalPaginas = pdf.numPages;
+
+        modal.style.display = 'flex'; 
+
+        for (let i = 0; i < totalPaginas; i++) {
+            const divPage = document.createElement('div');
+            divPage.className = 'page-card';
+            divPage.dataset.pageNum = i; 
+            
+            const imgUrl = `/api/thumbnail/${arquivoAtual.id}/${i}`;
+            
+            divPage.innerHTML = `
+                <img src="${imgUrl}" style="width:100%; height:95px; object-fit:contain;" loading="lazy">
+                <span>Pág ${i + 1}</span>
+            `;
+            
+            divPage.ondblclick = () => mostrarZoomMiniatura(imgUrl);
+            sourceList.appendChild(divPage);
+        }
+
+        new Sortable(sourceList, { group: 'shared', animation: 150, sort: false });
+        adicionarGrupoSplit();
+
+    } catch (e) {
+        alert("Erro: " + e);
+        modal.style.display = 'none';
+    } finally {
+        loading.style.display = 'none';
+    }
+}
+
+function adicionarGrupoSplit() {
+    const container = document.getElementById('split-groups-container');
+    const divGrupo = document.createElement('div');
+    divGrupo.className = 'doc-group';
+    const selectClone = document.getElementById('doc-type').cloneNode(true);
+    selectClone.id = ""; 
+    
+    divGrupo.innerHTML = `
+        <div class="doc-group-header">
+            <div class="doc-group-title"><span>Novo Doc</span><button class="btn-remove-group" onclick="this.closest('.doc-group').remove()">×</button></div>
+            <div class="select-container"></div>
+        </div>
+        <div class="doc-group-list sortable-drag-area"></div>
+    `;
+    divGrupo.querySelector('.select-container').appendChild(selectClone);
+    container.appendChild(divGrupo);
+    new Sortable(divGrupo.querySelector('.doc-group-list'), { group: 'shared', animation: 150 });
+}
+
+async function confirmarSeparacao() {
+    const gruposDivs = document.querySelectorAll('.doc-group');
+    let payloadGrupos = [];
+    let nomeLimpo = formatarNomeVisual(nomeFuncionarioAtual);
+
+    for(let grupo of gruposDivs) {
+        const tipo = grupo.querySelector('select').value;
+        const paginasElements = grupo.querySelectorAll('.page-card');
+        let indices = [];
+        paginasElements.forEach(el => indices.push(parseInt(el.dataset.pageNum)));
+        
+        if(indices.length > 0) {
+            indices.sort((a, b) => a - b);
+            let nomeArquivo = `${tipo} - ${nomeLimpo}.pdf`;
+            payloadGrupos.push({ nome: nomeArquivo, paginas: indices });
+        }
+    }
+
+    // Lógica de Sobra Automática
+    const containerOrigem = document.getElementById('split-source-list');
+    const sobrasElements = containerOrigem.querySelectorAll('.page-card');
+    
+    if (sobrasElements.length > 0) {
+        if (payloadGrupos.length > 0) {
+            let indicesSobras = [];
+            sobrasElements.forEach(el => indicesSobras.push(parseInt(el.dataset.pageNum)));
+            indicesSobras.sort((a, b) => a - b);
+            payloadGrupos.push({ nome: arquivoAtual.name, paginas: indicesSobras });
+        } else return alert("Separe pelo menos uma página.");
+    } else if(payloadGrupos.length === 0) return alert("Crie grupos.");
+
+    document.getElementById('loading-overlay').style.display = 'flex';
+
+    const res = await fetch('/api/separar_blocos', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ 
+            id: arquivoAtual.id, 
+            folder_id: pastaAtualId, 
+            grupos: payloadGrupos 
+        })
+    });
+
+    const data = await res.json();
+    document.getElementById('loading-overlay').style.display = 'none';
+    if(data.status === 'success') {
+        alert("Salvo com sucesso!");
+        document.getElementById('modal-separar').style.display = 'none';
+        carregarArquivosDaPasta(pastaAtualId);
+    } else {
+        alert("Erro: " + data.msg);
+    }
+}
+
+// ======================================================
+// 8. EXCLUIR E VISUALIZADOR (FINAL)
+// ======================================================
+async function acaoExcluir() {
+    let idsParaDeletar = [];
+    if (selecionados.length > 0) idsParaDeletar = selecionados.map(a => a.id);
+    else if (arquivoAtual) idsParaDeletar = [arquivoAtual.id];
+    else return alert("Selecione um arquivo.");
+
+    if (!confirm("Tem certeza que deseja excluir?")) return;
+
+    document.getElementById('loading-overlay').style.display = 'flex';
+    try {
+        const res = await fetch('/api/excluir_arquivos', {
+            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ ids: idsParaDeletar })
+        });
+        const data = await res.json();
+        if (data.status === 'success') {
+            selecionados = []; arquivoAtual = null; toggleModoSelecao(true);
+            carregarArquivosDaPasta(pastaAtualId);
+        } else alert("Erro: " + data.msg);
+    } catch (e) { alert("Erro conexão"); } 
+    finally { document.getElementById('loading-overlay').style.display = 'none'; }
+}
+
+async function abrirVisualizadorCompleto(arq) {
+    if(!arq) arq = arquivoAtual; if(!arq) return;
+    arquivoAtual = arq; 
+    const modal = document.getElementById('modal-visualizacao');
+    const titulo = document.getElementById('modal-titulo');
+    const controls = document.getElementById('viewer-controls');
+    const imgElement = document.getElementById('viewer-image');
+    const iframeElement = document.getElementById('preview-frame');
+    
+    titulo.innerText = arq.name;
+    modal.style.display = 'flex';
+    resetarVisualizacao();
+    
+    imgElement.className = 'viewer-element hidden';
+    iframeElement.className = 'viewer-element hidden';
+    controls.style.visibility = 'visible'; 
+
+    if (arq.mimeType.includes('image')) {
+        imgElement.classList.remove('hidden'); imgElement.src = `/api/proxy_pdf/${arq.id}`; toggleMover(true);
+    } else {
+        iframeElement.classList.remove('hidden'); iframeElement.src = `https://drive.google.com/file/d/${arq.id}/preview`; toggleMover(false);
+    }
+}
+
+function controlarZoom(delta) { viewerState.scale += delta; if (viewerState.scale < 0.1) viewerState.scale = 0.1; aplicarTransformacao(); }
+function controlarRotacao(graus) { viewerState.rotation += graus; aplicarTransformacao(); }
+function resetarVisualizacao() { viewerState.scale = 1; viewerState.rotation = 0; viewerState.x = 0; viewerState.y = 0; aplicarTransformacao(); }
+function aplicarTransformacao() {
+    const img = document.getElementById('viewer-image'); const iframe = document.getElementById('preview-frame');
+    const target = !img.classList.contains('hidden') ? img : iframe;
+    if(target) target.style.transform = `translate(${viewerState.x}px, ${viewerState.y}px) rotate(${viewerState.rotation}deg) scale(${viewerState.scale})`;
+}
+function toggleMover(forceState = null) {
+    const btn = document.getElementById('btn-move'); const layer = document.getElementById('drag-layer'); const container = document.getElementById('img-container');
+    if (forceState !== null) viewerState.moveMode = forceState; else viewerState.moveMode = !viewerState.moveMode;
+    if(viewerState.moveMode) { btn.classList.add('active-tool'); layer.classList.remove('hidden'); container.classList.add('grabbing'); } 
+    else { btn.classList.remove('active-tool'); layer.classList.add('hidden'); container.classList.remove('grabbing'); }
+}
+const containerImg = document.getElementById('img-container');
+containerImg.addEventListener('mousedown', (e) => { if(!viewerState.moveMode) return; viewerState.isDragging = true; viewerState.startX = e.clientX - viewerState.x; viewerState.startY = e.clientY - viewerState.y; containerImg.style.cursor = 'grabbing'; });
+window.addEventListener('mousemove', (e) => { if (!viewerState.isDragging) return; e.preventDefault(); viewerState.x = e.clientX - viewerState.startX; viewerState.y = e.clientY - viewerState.startY; aplicarTransformacao(); });
+window.addEventListener('mouseup', () => { if(viewerState.isDragging) { viewerState.isDragging = false; containerImg.style.cursor = 'grab'; } });
+
+function mostrarZoomMiniatura(src) {
+    const overlay = document.getElementById('thumb-zoom-overlay'); const img = document.getElementById('thumb-zoom-img');
+    if(src.includes('googleusercontent') && src.includes('=s')) { let parts = src.split('=s'); src = parts[0] + '=s1600'; }
+    img.src = src; overlay.style.display = 'flex';
 }
 
 function fecharModal(event, force = false) {
