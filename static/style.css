@@ -1,0 +1,50 @@
+/* ... (Mantenha o CSS anterior e adicione/substitua isso) ... */
+
+/* DROP ZONE */
+.drop-zone {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 100%;
+    background: rgba(0, 122, 204, 0.9);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    z-index: 500;
+    opacity: 0;
+    pointer-events: none; /* Deixa clicar através quando invisivel */
+    transition: 0.3s;
+}
+
+.drop-zone.active {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.drop-zone.hidden {
+    display: none; /* Esconde quando não tem func selecionado */
+}
+
+.drop-zone p { color: white; font-size: 24px; font-weight: bold; margin-top: 10px; }
+.drop-zone span { color: white; }
+
+/* BOTÃO FLUTUANTE DE UPLOAD */
+.btn-upload-float {
+    position: fixed;
+    bottom: 100px; /* Acima do painel de ações */
+    right: 30px;
+    background-color: var(--accent);
+    color: white;
+    border: none;
+    border-radius: 50px;
+    padding: 15px 25px;
+    font-size: 16px;
+    font-weight: bold;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: 0.2s;
+    z-index: 100;
+}
+.btn-upload-float:hover { background-color: #005f9e; transform: scale(1.05); }
